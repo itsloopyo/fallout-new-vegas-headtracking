@@ -1,0 +1,158 @@
+name: Release
+run-name: "Release ${{ github.ref_name }}"
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Extract version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ($tag -notmatch "^v(\d+\.\d+\.\d+)$") {
+            Write-Host "::error::Tag format invalid. Use semantic versioning: v1.2.3"
+            exit 1
+          }
+          $version = $matches[1]
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "tag=$tag" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $version"
+
+      - name: Validate version matches src/version.h
+        shell: pwsh
+        run: |
+          $tagVersion = "${{ steps.version.outputs.version }}"
+          $content = Get-Content "src/version.h" -Raw
+
+          $major = [regex]::Match($content, 'VERSION_MAJOR\s*=\s*(\d+)').Groups[1].Value
+          $minor = [regex]::Match($content, 'VERSION_MINOR\s*=\s*(\d+)').Groups[1].Value
+          $patch = [regex]::Match($content, 'VERSION_PATCH\s*=\s*(\d+)').Groups[1].Value
+
+          if (-not $major -or -not $minor -or -not $patch) {
+            Write-Host "::error::Could not parse version from src/version.h"
+            exit 1
+          }
+
+          $headerVersion = "$major.$minor.$patch"
+          if ($headerVersion -ne $tagVersion) {
+            Write-Host "::error::Tag version ($tagVersion) does not match src/version.h ($headerVersion)"
+            exit 1
+          }
+
+          Write-Host "Version match: $headerVersion" -ForegroundColor Green
+
+      - name: Setup Visual Studio environment
+        uses: microsoft/setup-msbuild@v3
+
+      - name: Configure CMake (Win32/x86)
+        shell: pwsh
+        run: |
+          Write-Host "Configuring CMake build (Win32)..." -ForegroundColor Cyan
+          cmake -B build -G "Visual Studio 17 2022" -A Win32
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::CMake configuration failed"
+            exit 1
+          }
+
+          Write-Host "CMake configuration succeeded" -ForegroundColor Green
+
+      - name: Build Release
+        shell: pwsh
+        run: |
+          Write-Host "Building release..." -ForegroundColor Cyan
+          cmake --build build --config Release
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::Build failed"
+            exit 1
+          }
+
+          Write-Host "Build succeeded" -ForegroundColor Green
+
+      - name: Package release
+        shell: pwsh
+        run: |
+          Write-Host "Packaging release..." -ForegroundColor Cyan
+          powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::Packaging failed"
+            exit 1
+          }
+
+          Write-Host "Package created" -ForegroundColor Green
+
+      - name: Generate release notes
+        shell: pwsh
+        run: |
+          $artifactPaths = @(
+            "src/"
+            "cameraunlock-core"
+            "scripts/install.cmd"
+            "scripts/uninstall.cmd"
+            "prebuilt/"
+          )
+
+          & cameraunlock-core/scripts/generate-release-notes.ps1 `
+            -Version "${{ steps.version.outputs.version }}" `
+            -ArtifactPaths $artifactPaths `
+            -ProjectName "Head Tracking for Fallout: New Vegas"
+
+      - name: Find release ZIPs
+        id: find_zip
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $installerZip = "release/FalloutNVHeadTracking-v$version-installer.zip"
+          $nexusZip = "release/FalloutNVHeadTracking-v$version-nexus.zip"
+
+          foreach ($zip in @($installerZip, $nexusZip)) {
+            if (-not (Test-Path $zip)) {
+              Write-Host "::error::Release ZIP not found at $zip"
+              exit 1
+            }
+            Write-Host "Found ZIP: $zip"
+          }
+
+          echo "installer_zip=$installerZip" >> $env:GITHUB_OUTPUT
+          echo "nexus_zip=$nexusZip" >> $env:GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          $installerZip = "${{ steps.find_zip.outputs.installer_zip }}"
+          $nexusZip = "${{ steps.find_zip.outputs.nexus_zip }}"
+
+          Write-Host "Creating GitHub Release for $tag..." -ForegroundColor Cyan
+
+          gh release create $tag `
+            --title "Head Tracking for Fallout: New Vegas $tag" `
+            --notes-file "release-notes.txt" `
+            $installerZip $nexusZip
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::Failed to create GitHub release"
+            exit 1
+          }
+
+          Write-Host "Release created successfully\!" -ForegroundColor Green
