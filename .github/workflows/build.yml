@@ -1,0 +1,155 @@
+name: Build
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+
+jobs:
+  build:
+    name: Build and Validate
+    runs-on: windows-latest
+    if: ${{ !startsWith(github.event.head_commit.message, 'Release v') }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Visual Studio environment
+        uses: microsoft/setup-msbuild@v3
+
+      - name: Setup CMake
+        shell: pwsh
+        run: |
+          Write-Host "CMake version:" -ForegroundColor Cyan
+          cmake --version
+
+      - name: Configure CMake (Win32/x86)
+        shell: pwsh
+        run: |
+          Write-Host "Configuring CMake build (Win32)..." -ForegroundColor Cyan
+          # Fallout: New Vegas is a 32-bit game
+          cmake -B build -G "Visual Studio 17 2022" -A Win32
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::CMake configuration failed"
+            exit 1
+          }
+
+          Write-Host "CMake configuration succeeded" -ForegroundColor Green
+
+      - name: Build Debug
+        shell: pwsh
+        run: |
+          Write-Host "Building debug configuration..." -ForegroundColor Cyan
+          cmake --build build --config Debug
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::Debug build failed"
+            exit 1
+          }
+
+          Write-Host "Debug build succeeded" -ForegroundColor Green
+
+      - name: Build Release
+        shell: pwsh
+        run: |
+          Write-Host "Building release configuration..." -ForegroundColor Cyan
+          cmake --build build --config Release
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::Release build failed"
+            exit 1
+          }
+
+          Write-Host "Release build succeeded" -ForegroundColor Green
+
+      - name: Verify build outputs
+        shell: pwsh
+        run: |
+          Write-Host "Verifying build outputs..." -ForegroundColor Cyan
+
+          $requiredFiles = @(
+            "build/bin/Release/HeadTracking.dll",
+            "build/bin/Debug/HeadTracking.dll"
+          )
+
+          $allExist = $true
+          foreach ($file in $requiredFiles) {
+            if (Test-Path $file) {
+              $size = (Get-Item $file).Length / 1KB
+              Write-Host "  $file ($([math]::Round($size, 2)) KB)" -ForegroundColor Green
+            } else {
+              Write-Host "  Missing: $file" -ForegroundColor Red
+              $allExist = $false
+            }
+          }
+
+          if (-not $allExist) {
+            Write-Host "::error::Some build outputs are missing"
+            exit 1
+          }
+
+          Write-Host "All build outputs verified" -ForegroundColor Green
+
+      - name: Package installer
+        shell: pwsh
+        run: |
+          Write-Host "Packaging installer ZIP..." -ForegroundColor Cyan
+          powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::Packaging failed"
+            exit 1
+          }
+
+          Write-Host "Package created" -ForegroundColor Green
+
+      - name: Stage installer contents for artifact upload
+        shell: pwsh
+        run: |
+          Write-Host "Staging installer contents..." -ForegroundColor Cyan
+
+          $zip = Get-ChildItem -Path release -Filter "FalloutNVHeadTracking-*-installer.zip" | Select-Object -First 1
+          if (-not $zip) {
+            Write-Host "::error::No installer ZIP found under release/"
+            exit 1
+          }
+
+          $contentsDir = "release/artifact-contents"
+          if (Test-Path $contentsDir) {
+            Remove-Item -Recurse -Force $contentsDir
+          }
+          New-Item -ItemType Directory -Path $contentsDir -Force | Out-Null
+
+          Expand-Archive -Path $zip.FullName -DestinationPath $contentsDir -Force
+          Write-Host "Staged $($zip.Name) to $contentsDir" -ForegroundColor Green
+
+      - name: Compute artifact name from ref
+        id: artifact_name
+        shell: pwsh
+        run: |
+          $branch = "${{ github.ref_name }}"
+          $sanitized = $branch -replace '[^A-Za-z0-9._-]', '-'
+          $name = "FalloutNVHeadTracking-$sanitized"
+          echo "name=$name" >> $env:GITHUB_OUTPUT
+          Write-Host "Artifact name: $name"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.artifact_name.outputs.name }}
+          path: release/artifact-contents/
+          retention-days: 14
+          if-no-files-found: error

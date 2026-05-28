@@ -1,0 +1,56 @@
+# Build output
+bin/
+obj/
+out/
+build/
+x64/
+Debug/
+Release/
+*.dll
+*.asi
+*.exe
+*.pdb
+*.lib
+*.exp
+*.ilk
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.vcxproj.user
+
+# Release packaging
+dist/
+release/
+
+# Install state
+.headtracking-state.json
+
+# Pixi
+.pixi/
+
+# AI tooling
+.claude/
+.millhouse/
+.lab/
+.mcp.json
+.mcp/
+NEXUS_MODS.md
+AGENTS.md
+CLAUDE.md
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

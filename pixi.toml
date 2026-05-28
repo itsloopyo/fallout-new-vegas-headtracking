@@ -1,0 +1,67 @@
+[workspace]
+name = "fnv-head-tracking"
+version = "0.0.0"
+description = "Head tracking mod for Fallout: New Vegas using CameraUnlock shared library"
+license = "MIT"
+channels = ["conda-forge"]
+platforms = ["win-64"]
+
+[tasks]
+# Update the shared cameraunlock-core submodule to its remote tip
+sync = "git submodule update --remote cameraunlock-core"
+
+# Setup CMake build (x86 for FNV)
+setup = { cmd = """
+    powershell -Command "if (-not (Test-Path 'build')) { cmake -B build -G 'Visual Studio 16 2019' -A Win32 } else { Write-Host 'Build directory exists, skipping setup' -ForegroundColor Yellow }"
+""" }
+
+# Build debug version
+build = { cmd = "cmake --build build --config Debug", depends-on = ["setup"] }
+
+# Build release version
+build-release = { cmd = "cmake --build build --config Release", depends-on = ["setup"] }
+
+# Build and deploy to game directory (release)
+install = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 Release", depends-on = ["build-release"] }
+
+# Remove mod from game directory
+uninstall = "scripts\\uninstall.cmd"
+
+# Bump vendored mod-loader copies to latest upstream within pinned range.
+# Manual; commit the result. CI does not run this.
+update-deps = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/update-deps.ps1" }
+
+# Package release ZIP
+package = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build-release"] }
+
+# Clean build artifacts
+clean = { cmd = """
+    powershell -Command "if (Test-Path 'build') { Remove-Item 'build' -Recurse -Force }; Write-Host 'Build artifacts cleaned' -ForegroundColor Green"
+""" }
+
+# Full clean including release output
+clean-all = { cmd = """
+    powershell -Command "if (Test-Path 'build') { Remove-Item 'build' -Recurse -Force }; if (Test-Path 'release') { Remove-Item 'release' -Recurse -Force }; Write-Host 'All build artifacts cleaned' -ForegroundColor Green"
+""" }
+
+# Remove mod and revert to vanilla game (for testing if crashes are mod-related)
+vanilla = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/vanilla.ps1" }
+
+# Skip intro videos / chargen narration for fast debug launches. Reversible.
+fast-launch = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/fast-launch.ps1" }
+restore-launch = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/fast-launch.ps1 -Restore" }
+
+# Validate release readiness
+validate-release = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/validate-release.ps1" }
+
+# Preview changelog for next release
+show-changelog = "powershell -ExecutionPolicy Bypass -File scripts/show-changelog.ps1"
+
+# Full release workflow (validate, build, package)
+release = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/release.ps1" }
+
+# Revert release operations
+unrelease = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/unrelease.ps1" }
+
+[dependencies]
+# No pixi dependencies needed - using system CMake and Visual Studio
