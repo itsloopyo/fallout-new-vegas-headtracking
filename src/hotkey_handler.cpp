@@ -8,6 +8,8 @@
 #include "tracking_data.h"
 #include "debug_log.h"
 
+#include <cameraunlock/input/chord_hotkeys.h>
+
 namespace HeadTracking {
 
 HotkeyHandler::HotkeyHandler()
@@ -74,11 +76,8 @@ HotkeyAction HotkeyHandler::Update() {
         return HotkeyAction::None;
     }
 
-    // Resolve modifier state once per frame. GetAsyncKeyState(VK_CONTROL) /
-    // VK_SHIFT report either left- or right-side modifier transparently.
-    const bool ctrlShiftHeld =
-        (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 &&
-        (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+    // Resolve modifier state once per frame.
+    const bool ctrlShiftHeld = cameraunlock::input::IsChordHeld();
 
     // Each action accepts EITHER its nav-cluster key (when Ctrl+Shift is not
     // held) OR its Ctrl+Shift+<letter> chord. Shared edge-detection state

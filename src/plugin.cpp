@@ -15,6 +15,7 @@
 
 #include <cameraunlock/data/position_data.h>
 #include <cameraunlock/math/quat4.h>
+#include <cameraunlock/time/qpc_clock.h>
 
 #include <string>
 
@@ -25,25 +26,6 @@ constexpr float kMaxDeltaTime = 0.1f;
 // OpenTrack sends position in centimeters; the processor/culling pipeline works
 // in meters.
 constexpr double kCmToM = 0.01;
-
-// High-resolution timer using QueryPerformanceCounter (sub-microsecond precision).
-// GetTickCount64() has ~15.6ms granularity which is unusable at high frame rates —
-// at 240fps (4.17ms/frame) it groups ~4 frames into one tick, making deltaTime
-// alternate between 0 and 16ms instead of smooth ~4ms steps.
-static uint64_t GetTimeMicros() {
-    static LARGE_INTEGER freq = {};
-    if (freq.QuadPart == 0) QueryPerformanceFrequency(&freq);
-    LARGE_INTEGER now;
-    QueryPerformanceCounter(&now);
-    // `now.QuadPart * 1000000` overflows the signed 64-bit counter after roughly
-    // ten days of system uptime on a 10 MHz QPC (INT64_MAX / 1e6 ≈ 9.2e12 ticks).
-    // Signed overflow is UB and corrupts every deltaTime derived from this clock.
-    // Split into whole seconds plus remainder so the microsecond scale never
-    // overflows for any realistic uptime.
-    uint64_t ticks = static_cast<uint64_t>(now.QuadPart);
-    uint64_t hz = static_cast<uint64_t>(freq.QuadPart);
-    return (ticks / hz) * 1000000ULL + (ticks % hz) * 1000000ULL / hz;
-}
 
 // Global module handle
 HMODULE g_hModule = nullptr;
@@ -134,8 +116,8 @@ bool HeadTrackingPlugin::Initialize(const NVSEInterface* nvse) {
     m_positionInterpolator.Reset();
 
     m_initialized = true;
-    m_lastUpdateTime = GetTimeMicros();
-    m_lastConfigCheckTime = GetTimeMicros();
+    m_lastUpdateTime = cameraunlock::time::QpcNowMicros();
+    m_lastConfigCheckTime = cameraunlock::time::QpcNowMicros();
 
     return true;
 }
@@ -173,7 +155,7 @@ void HeadTrackingPlugin::Update() {
     }
 
     // Calculate delta time using high-res timer
-    uint64_t currentTime = GetTimeMicros();
+    uint64_t currentTime = cameraunlock::time::QpcNowMicros();
     float deltaTime = static_cast<float>(currentTime - m_lastUpdateTime) / 1000000.0f;
     m_lastUpdateTime = currentTime;
 
@@ -376,7 +358,7 @@ void HeadTrackingPlugin::CheckConfigReload() {
 
 void HeadTrackingPlugin::OnGameLoaded() {
     m_gameLoaded = true;
-    m_lastUpdateTime = GetTimeMicros();
+    m_lastUpdateTime = cameraunlock::time::QpcNowMicros();
     m_poseInterpolator.Reset();
 
     // Reset cached UI pointers - they become stale after loading screens

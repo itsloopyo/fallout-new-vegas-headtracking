@@ -7,8 +7,6 @@
 #include "game_state.h"
 #include "udp_receiver.h"
 
-#include <cstdlib>
-#include <cstring>
 #include <fstream>
 
 namespace HeadTracking {
@@ -32,7 +30,6 @@ constexpr int DEFAULT_INPUT_BLOCK_MODE = 0;  // Never
 Config::Config()
     : m_iniPath()
     , m_loaded(false)
-    , m_lastModTime{}
     , m_udpPort(DEFAULT_UDP_PORT)
     , m_sensitivityYaw(DEFAULT_SENSITIVITY)
     , m_sensitivityPitch(DEFAULT_SENSITIVITY)
@@ -54,8 +51,6 @@ Config::Config()
     , m_showMessages(true)
     , m_cameraMode(CameraMode::Decoupled)
     , m_worldSpaceYaw(true) {
-    m_lastModTime.dwLowDateTime = 0;
-    m_lastModTime.dwHighDateTime = 0;
 }
 
 Config::~Config() {
@@ -89,11 +84,12 @@ bool Config::Load(const std::string& iniPath) {
         }
     }
 
-    // Store file modification time for change detection
-    if (!GetFileModTime(&m_lastModTime)) {
+    // Open with the shared INI reader (also captures mod time for change detection)
+    if (!m_ini.Open(m_iniPath)) {
         if (g_ConsolePrint) {
-            g_ConsolePrint("HeadTracking: WARNING - Could not get config file modification time");
+            g_ConsolePrint("HeadTracking: ERROR - Failed to open config file %s", m_iniPath.c_str());
         }
+        return false;
     }
 
     if (g_ConsolePrint) {
@@ -101,31 +97,31 @@ bool Config::Load(const std::string& iniPath) {
     }
 
     // Network section
-    m_udpPort = static_cast<uint16_t>(ReadInt("Network", "Port", DEFAULT_UDP_PORT));
+    m_udpPort = static_cast<uint16_t>(m_ini.ReadInt("Network", "Port", DEFAULT_UDP_PORT));
 
     // Sensitivity section
-    m_sensitivityYaw = ReadDouble("Sensitivity", "Yaw", DEFAULT_SENSITIVITY);
-    m_sensitivityPitch = ReadDouble("Sensitivity", "Pitch", DEFAULT_SENSITIVITY);
-    m_sensitivityRoll = ReadDouble("Sensitivity", "Roll", DEFAULT_SENSITIVITY);
+    m_sensitivityYaw = m_ini.ReadDouble("Sensitivity", "Yaw", DEFAULT_SENSITIVITY);
+    m_sensitivityPitch = m_ini.ReadDouble("Sensitivity", "Pitch", DEFAULT_SENSITIVITY);
+    m_sensitivityRoll = m_ini.ReadDouble("Sensitivity", "Roll", DEFAULT_SENSITIVITY);
 
     // Smoothing section
-    m_smoothing = ReadDouble("Smoothing", "Amount", DEFAULT_SMOOTHING);
+    m_smoothing = m_ini.ReadDouble("Smoothing", "Amount", DEFAULT_SMOOTHING);
 
     // Deadzone section
-    m_deadzoneYaw = ReadDouble("Deadzone", "Yaw", DEFAULT_DEADZONE);
-    m_deadzonePitch = ReadDouble("Deadzone", "Pitch", DEFAULT_DEADZONE);
-    m_deadzoneRoll = ReadDouble("Deadzone", "Roll", DEFAULT_DEADZONE);
+    m_deadzoneYaw = m_ini.ReadDouble("Deadzone", "Yaw", DEFAULT_DEADZONE);
+    m_deadzonePitch = m_ini.ReadDouble("Deadzone", "Pitch", DEFAULT_DEADZONE);
+    m_deadzoneRoll = m_ini.ReadDouble("Deadzone", "Roll", DEFAULT_DEADZONE);
 
     // Hotkeys section
-    m_recenterKey = ReadHex("Hotkeys", "Recenter", DEFAULT_RECENTER_KEY);
-    m_toggleKey = ReadHex("Hotkeys", "Toggle", DEFAULT_TOGGLE_KEY);
-    m_cycleTrackingModeKey = ReadHex("Hotkeys", "CycleTrackingMode", DEFAULT_CYCLE_TRACKING_MODE_KEY);
-    m_reticleToggleKey = ReadHex("Hotkeys", "ReticleToggle", DEFAULT_RETICLE_TOGGLE_KEY);
-    m_yawModeKey = ReadHex("Hotkeys", "YawModeKey", DEFAULT_YAW_MODE_KEY);
-    m_debounceMs = static_cast<uint64_t>(ReadInt("Hotkeys", "DebounceMs", static_cast<int>(DEFAULT_DEBOUNCE_MS)));
+    m_recenterKey = m_ini.ReadHex("Hotkeys", "Recenter", DEFAULT_RECENTER_KEY);
+    m_toggleKey = m_ini.ReadHex("Hotkeys", "Toggle", DEFAULT_TOGGLE_KEY);
+    m_cycleTrackingModeKey = m_ini.ReadHex("Hotkeys", "CycleTrackingMode", DEFAULT_CYCLE_TRACKING_MODE_KEY);
+    m_reticleToggleKey = m_ini.ReadHex("Hotkeys", "ReticleToggle", DEFAULT_RETICLE_TOGGLE_KEY);
+    m_yawModeKey = m_ini.ReadHex("Hotkeys", "YawModeKey", DEFAULT_YAW_MODE_KEY);
+    m_debounceMs = static_cast<uint64_t>(m_ini.ReadInt("Hotkeys", "DebounceMs", static_cast<int>(DEFAULT_DEBOUNCE_MS)));
 
     // GameState section
-    int inputBlockMode = ReadInt("GameState", "InputBlockMode", DEFAULT_INPUT_BLOCK_MODE);
+    int inputBlockMode = m_ini.ReadInt("GameState", "InputBlockMode", DEFAULT_INPUT_BLOCK_MODE);
     switch (inputBlockMode) {
         case 0:
             m_inputBlockMode = InputBlockMode::Never;
@@ -146,18 +142,18 @@ bool Config::Load(const std::string& iniPath) {
             return false;
     }
 
-    m_trackInThirdPerson = ReadBool("GameState", "TrackInThirdPerson", true);
-    m_trackInVATS = ReadBool("GameState", "TrackInVATS", false);
-    m_pauseDuringCombat = ReadBool("GameState", "PauseDuringCombat", false);
+    m_trackInThirdPerson = m_ini.ReadBool("GameState", "TrackInThirdPerson", true);
+    m_trackInVATS = m_ini.ReadBool("GameState", "TrackInVATS", false);
+    m_pauseDuringCombat = m_ini.ReadBool("GameState", "PauseDuringCombat", false);
 
     // Feedback section
-    m_showMessages = ReadBool("Feedback", "ShowMessages", true);
+    m_showMessages = m_ini.ReadBool("Feedback", "ShowMessages", true);
 
     // Camera section
     // CameraMode: 0 = Coupled (camera follows player rotation, affects aim)
     //             1 = Decoupled (camera independent, uses D3D hook)
     //             2 = BodyTracking (camera follows head, movement uses body direction)
-    int cameraMode = ReadInt("Camera", "Mode", 1);
+    int cameraMode = m_ini.ReadInt("Camera", "Mode", 1);
     switch (cameraMode) {
         case 0:
             m_cameraMode = CameraMode::Coupled;
@@ -176,7 +172,7 @@ bool Config::Load(const std::string& iniPath) {
     }
 
     // WorldSpaceYaw: true = horizon-locked yaw (default), false = camera-local
-    m_worldSpaceYaw = ReadBool("Camera", "WorldSpaceYaw", true);
+    m_worldSpaceYaw = m_ini.ReadBool("Camera", "WorldSpaceYaw", true);
 
     // Validate values - FAIL FAST on invalid config
     auto inDoubleRange = [](double v, double lo, double hi, const char* name) -> bool {
@@ -258,17 +254,7 @@ bool Config::Reload() {
 }
 
 bool Config::HasFileChanged() const {
-    if (m_iniPath.empty()) {
-        return false;
-    }
-
-    FILETIME currentModTime;
-    if (!const_cast<Config*>(this)->GetFileModTime(&currentModTime)) {
-        return false;
-    }
-
-    // Compare file times
-    return CompareFileTime(&m_lastModTime, &currentModTime) != 0;
+    return m_ini.HasChanged();
 }
 
 bool Config::ApplyToComponents(CameraController* camera, HotkeyHandler* hotkey,
@@ -344,94 +330,6 @@ DeadzoneSettings Config::GetDeadzone() const {
     deadzone.pitch = m_deadzonePitch;
     deadzone.roll = m_deadzoneRoll;
     return deadzone;
-}
-
-std::string Config::ReadString(const char* section, const char* key, const char* defaultValue) const {
-    if (m_iniPath.empty()) {
-        return defaultValue;
-    }
-
-    char buffer[256];
-    DWORD result = GetPrivateProfileStringA(
-        section,
-        key,
-        defaultValue,
-        buffer,
-        sizeof(buffer),
-        m_iniPath.c_str());
-
-    if (result == 0 && GetLastError() != ERROR_SUCCESS) {
-        return defaultValue;
-    }
-
-    return std::string(buffer);
-}
-
-int Config::ReadInt(const char* section, const char* key, int defaultValue) const {
-    if (m_iniPath.empty()) {
-        return defaultValue;
-    }
-
-    return GetPrivateProfileIntA(section, key, defaultValue, m_iniPath.c_str());
-}
-
-double Config::ReadDouble(const char* section, const char* key, double defaultValue) const {
-    std::string strValue = ReadString(section, key, "");
-    if (strValue.empty()) {
-        return defaultValue;
-    }
-
-    char* endPtr = nullptr;
-    double value = std::strtod(strValue.c_str(), &endPtr);
-
-    // Check if conversion failed
-    if (endPtr == strValue.c_str()) {
-        return defaultValue;
-    }
-
-    return value;
-}
-
-bool Config::ReadBool(const char* section, const char* key, bool defaultValue) const {
-    int intValue = ReadInt(section, key, defaultValue ? 1 : 0);
-    return intValue != 0;
-}
-
-int Config::ReadHex(const char* section, const char* key, int defaultValue) const {
-    std::string strValue = ReadString(section, key, "");
-    if (strValue.empty()) {
-        return defaultValue;
-    }
-
-    // Handle "0x" prefix
-    const char* startPtr = strValue.c_str();
-    if (strValue.length() >= 2 && strValue[0] == '0' && (strValue[1] == 'x' || strValue[1] == 'X')) {
-        startPtr += 2;
-    }
-
-    char* endPtr = nullptr;
-    long value = std::strtol(startPtr, &endPtr, 16);
-
-    // Check if conversion failed
-    if (endPtr == startPtr) {
-        return defaultValue;
-    }
-
-    return static_cast<int>(value);
-}
-
-bool Config::GetFileModTime(FILETIME* modTime) const {
-    if (m_iniPath.empty() || !modTime) {
-        return false;
-    }
-
-    WIN32_FILE_ATTRIBUTE_DATA fileInfo;
-    if (!GetFileAttributesExA(m_iniPath.c_str(), GetFileExInfoStandard, &fileInfo)) {
-        return false;
-    }
-
-    *modTime = fileInfo.ftLastWriteTime;
-    return true;
 }
 
 bool Config::CreateDefaultConfig() {

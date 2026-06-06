@@ -5,6 +5,8 @@
 #include "camera_controller.h"
 #include "game_state.h"
 
+#include <cameraunlock/config/ini_reader.h>
+
 #include <cstdint>
 #include <string>
 
@@ -58,24 +60,6 @@ public:
     bool IsLoaded() const { return m_loaded; }
 
 private:
-    // Read a string value from INI file
-    std::string ReadString(const char* section, const char* key, const char* defaultValue) const;
-
-    // Read an integer value from INI file
-    int ReadInt(const char* section, const char* key, int defaultValue) const;
-
-    // Read a double value from INI file
-    double ReadDouble(const char* section, const char* key, double defaultValue) const;
-
-    // Read a boolean value from INI file (0/1)
-    bool ReadBool(const char* section, const char* key, bool defaultValue) const;
-
-    // Read a hexadecimal value from INI file (e.g., "0x77")
-    int ReadHex(const char* section, const char* key, int defaultValue) const;
-
-    // Get file modification time
-    bool GetFileModTime(FILETIME* modTime) const;
-
     // Create default config file when missing
     bool CreateDefaultConfig();
 
@@ -85,8 +69,8 @@ private:
     // Load state
     bool m_loaded;
 
-    // File modification time (for change detection)
-    FILETIME m_lastModTime;
+    // INI reader (handles parsing and change detection)
+    cameraunlock::IniReader m_ini;
 
     // Network settings
     uint16_t m_udpPort;
