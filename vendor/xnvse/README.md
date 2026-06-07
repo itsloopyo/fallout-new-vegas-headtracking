@@ -17,7 +17,7 @@ carries no loader binary.
 - Version: `6.4.7`
 - Download URL: https://github.com/xNVSE/NVSE/releases/download/6.4.7/xnvse_6_4_7_windows_7_legacy_version.zip
 - SHA-256: `339ae6c8f9bdd6c90a4feeaae49f3b45f828849ad8f3fb1ccca533ebe895bdbc`
-- Refreshed at: 2026-05-27T16:12:48.4612119+01:00
+- Refreshed at: 2026-06-07T13:09:08.0906426+01:00
 
 The download URL and SHA-256 above are mirrored into the CONFIG BLOCK of
 `scripts/install.cmd` (`XNVSE_URL` / `XNVSE_SHA256`); this file is the

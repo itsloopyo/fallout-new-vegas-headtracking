@@ -57,47 +57,17 @@ jobs:
 
           Write-Host "Version match: $headerVersion" -ForegroundColor Green
 
+      # C++ toolchain for the pixi `package` task's cmake/msbuild build.
       - name: Setup Visual Studio environment
         uses: microsoft/setup-msbuild@v3
 
-      - name: Configure CMake (Win32/x86)
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+
+      # Same command as build.yml and developers run - no build logic in YAML.
+      - name: Build and package
         shell: pwsh
-        run: |
-          Write-Host "Configuring CMake build (Win32)..." -ForegroundColor Cyan
-          cmake -B build -G "Visual Studio 17 2022" -A Win32
-
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "::error::CMake configuration failed"
-            exit 1
-          }
-
-          Write-Host "CMake configuration succeeded" -ForegroundColor Green
-
-      - name: Build Release
-        shell: pwsh
-        run: |
-          Write-Host "Building release..." -ForegroundColor Cyan
-          cmake --build build --config Release
-
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "::error::Build failed"
-            exit 1
-          }
-
-          Write-Host "Build succeeded" -ForegroundColor Green
-
-      - name: Package release
-        shell: pwsh
-        run: |
-          Write-Host "Packaging release..." -ForegroundColor Cyan
-          powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1
-
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "::error::Packaging failed"
-            exit 1
-          }
-
-          Write-Host "Package created" -ForegroundColor Green
+        run: pixi run package
 
       - name: Generate release notes
         shell: pwsh
@@ -155,4 +125,4 @@ jobs:
             exit 1
           }
 
-          Write-Host "Release created successfully\!" -ForegroundColor Green
+          Write-Host "Release created successfully!" -ForegroundColor Green

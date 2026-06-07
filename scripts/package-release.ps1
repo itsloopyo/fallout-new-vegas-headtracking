@@ -15,6 +15,7 @@ $ProgressPreference = 'SilentlyContinue'
     time (see scripts/install.cmd CONFIG BLOCK and vendor/xnvse/README.md).
 
     Installer ZIP (FalloutNVHeadTracking-v<version>-installer.zip):
+    - launcher-manifest.json (root, version-stamped - the lopari contract)
     - install.cmd, uninstall.cmd (root)
     - plugins/HeadTracking.dll, plugins/HeadTracking.ini
     - shared/ (find-game.ps1 + games.json detection bundle)
@@ -114,6 +115,21 @@ Write-Host "  plugins/HeadTracking.ini" -ForegroundColor Green
 
 # xNVSE is NOT bundled (no upstream license to redistribute). install.cmd
 # downloads it from the pinned URL and verifies the SHA-256 at install time.
+
+# Stamp the launcher manifest with the real release version and place it at the
+# installer ZIP root. The launcher reads this file (delivery_mode is install_cmd,
+# so install.cmd still drives the actual install - the manifest is the metadata
+# lopari ingests for detection, audit, and future native deployment).
+$manifestSrc = Join-Path $projectRoot "launcher-manifest.json"
+if (-not (Test-Path $manifestSrc)) {
+    Write-Host "ERROR: launcher-manifest.json not found at $manifestSrc" -ForegroundColor Red
+    exit 1
+}
+$manifest = Get-Content $manifestSrc -Raw | ConvertFrom-Json
+$manifest.mod_info.version = $version
+$manifestDest = Join-Path $stagingDir "launcher-manifest.json"
+$manifest | ConvertTo-Json -Depth 10 | Set-Content -Path $manifestDest -Encoding utf8
+Write-Host "  launcher-manifest.json (version $version)" -ForegroundColor Green
 
 # Bundle the shared detection bundle (find-game.ps1 + games.json) for install.cmd's shim.
 Copy-SharedBundle -StagingDir $stagingDir -CoreRoot (Join-Path $projectRoot 'cameraunlock-core')

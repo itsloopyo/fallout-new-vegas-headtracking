@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "mod_info": {
+    "name": "FalloutNVHeadTracking",
+    "version": "0.0.0",
+    "game_id": "fallout-new-vegas"
+  },
+  "strategy": "xNVSE",
+  "delivery_mode": "manifest",
+
+  "loader": {
+    "archives": [
+      {
+        "fetch": {
+          "url": "https://github.com/xNVSE/NVSE/releases/download/6.4.7/xnvse_6_4_7_windows_7_legacy_version.zip",
+          "sha256": "339ae6c8f9bdd6c90a4feeaae49f3b45f828849ad8f3fb1ccca533ebe895bdbc",
+          "unwrap_nested": true,
+          "strip_to_marker": "nvse_loader.exe"
+        },
+        "dest": ""
+      }
+    ],
+    "detect": ["nvse_loader.exe", "nvse_1_4.dll"],
+    "seed": [
+      { "target": "Data/NVSE/Plugins/HeadTracking.ini", "content_b64": "OyBIZWFkVHJhY2tpbmcgTlZTRSBQbHVnaW4gQ29uZmlndXJhdGlvbgo7IFBsYWNlIHRoaXMgZmlsZSBhbG9uZ3NpZGUgSGVhZFRyYWNraW5nLmRsbCBpbiBEYXRhL05WU0UvUGx1Z2lucy8KCltOZXR3b3JrXQo7IFVEUCBwb3J0IGZvciBPcGVuVHJhY2sgZGF0YSAoZGVmYXVsdDogNDI0MikKOyBNdXN0IG1hdGNoIE9wZW5UcmFjayBvdXRwdXQgY29uZmlndXJhdGlvbgpQb3J0PTQyNDIKCltTZW5zaXRpdml0eV0KOyBTZW5zaXRpdml0eSBtdWx0aXBsaWVycyBmb3IgZWFjaCBheGlzICgwLjEtNS4wKQo7IDEuMCA9IDE6MSBtYXBwaW5nICgxIGRlZ3JlZSBoZWFkIHJvdGF0aW9uID0gMSBkZWdyZWUgY2FtZXJhIHJvdGF0aW9uKQpZYXc9MS4wClBpdGNoPTEuMApSb2xsPTEuMAoKW1Ntb290aGluZ10KOyBTbW9vdGhpbmcgZmFjdG9yIGZvciBjYW1lcmEgbW92ZW1lbnQKOyAwLjAgPSBubyBzbW9vdGhpbmcgKGRpcmVjdC9yYXcgaW5wdXQpCjsgMC45OSA9IG1heGltdW0gc21vb3RoaW5nICh2ZXJ5IHNsb3cgcmVzcG9uc2UpCjsgUmVjb21tZW5kZWQ6IDAuMy0wLjYgZm9yIHNtb290aCBidXQgcmVzcG9uc2l2ZSB0cmFja2luZwpBbW91bnQ9MC43CgpbSG90a2V5c10KOyBOYXYtY2x1c3RlciB2aXJ0dWFsIGtleSBjb2RlcyAoaGV4KS4gRWFjaCBhY3Rpb24gYWxzbyBhY2NlcHRzIGEgZml4ZWQKOyBDdHJsK1NoaWZ0KzxsZXR0ZXI+IGNob3JkIChUL1kvRy9IKSB3aGljaCBpcyBub3QgY29uZmlndXJhYmxlLgo7IEhvbWU9MHgyNCwgRW5kPTB4MjMsIFBhZ2VVcD0weDIxLCBQYWdlRG93bj0weDIyCjsKOyBBdm9pZCBrZXlzIHVzZWQgYnkgdGhlIGdhbWU6CjsgICBGNT1RdWlja3NhdmUsIEY5PVF1aWNrbG9hZCwgVEFCPVBpcC1Cb3ksIEVTQz1QYXVzZQpSZWNlbnRlcj0weDI0ClRvZ2dsZT0weDIzCkN5Y2xlVHJhY2tpbmdNb2RlPTB4MjEKUmV0aWNsZVRvZ2dsZT0weDIyCkRlYm91bmNlTXM9MjAwCgpbRGVhZHpvbmVdCjsgRGVhZHpvbmUgaW4gZGVncmVlcyBmb3IgZWFjaCBheGlzCjsgTW92ZW1lbnRzIHNtYWxsZXIgdGhhbiB0aGlzIHdpbGwgYmUgaWdub3JlZCAocmVkdWNlcyBqaXR0ZXIpCjsgU2V0IHRvIDAgdG8gZGlzYWJsZSBkZWFkem9uZQo7IFJlY29tbWVuZGVkOiAwLjUtMi4wIGRlcGVuZGluZyBvbiB0cmFja2VyIHN0YWJpbGl0eQpZYXc9MC4wClBpdGNoPTAuMApSb2xsPTAuMAoKW0dhbWVTdGF0ZV0KOyBJbnB1dCBibG9ja2luZyBtb2RlIC0gd2hlbiB0byBkaXNhYmxlIGhvdGtleXMKOyAwID0gTmV2ZXIgKGFsd2F5cyBwcm9jZXNzIGhvdGtleXMsIGV2ZW4gaW4gbWVudXMpCjsgMSA9IE1lbnVzIG9ubHkgKGJsb2NrIGR1cmluZyBwYXVzZSBtZW51LCBwaXBib3ksIGV0Yy4pCjsgMiA9IEFsbCBkaWFsb2d1ZSAoYmxvY2sgZHVyaW5nIG1lbnVzIEFORCBOUEMgY29udmVyc2F0aW9ucykKOyAzID0gQWxsIG92ZXJsYXlzIChibG9jayBkdXJpbmcgYW55IG92ZXJsYXk6IG1lbnVzLCBjb25zb2xlLCBWQVRTLCBldGMuKQo7IERlZmF1bHQ6IDAgKGhvdGtleXMgYWx3YXlzIHdvcmspCklucHV0QmxvY2tNb2RlPTAKCjsgVHJhY2sgaW4gdGhpcmQtcGVyc29uIGNhbWVyYSBtb2RlICgxPXllcywgMD1ubykKOyBEZWZhdWx0OiAxIChoZWFkIHRyYWNraW5nIHdvcmtzIGluIGJvdGggZmlyc3QgYW5kIHRoaXJkIHBlcnNvbikKVHJhY2tJblRoaXJkUGVyc29uPTEKCjsgVHJhY2sgZHVyaW5nIFZBVFMgKDE9eWVzLCAwPW5vKQo7IERlZmF1bHQ6IDAgKFZBVFMgaGFzIGl0cyBvd24gY2FtZXJhIGNvbnRyb2wpClRyYWNrSW5WQVRTPTAKCjsgUGF1c2UgdHJhY2tpbmcgZHVyaW5nIGNvbWJhdCAoMT15ZXMsIDA9bm8pCjsgRGVmYXVsdDogMCAoaGVhZCB0cmFja2luZyBjb250aW51ZXMgZHVyaW5nIGNvbWJhdCkKUGF1c2VEdXJpbmdDb21iYXQ9MAoKW0ZlZWRiYWNrXQo7IFNob3cgb24tc2NyZWVuIG1lc3NhZ2VzIHdoZW4gdG9nZ2xpbmcvcmVjZW50ZXJpbmcgKDE9eWVzLCAwPW5vKQpTaG93TWVzc2FnZXM9MQoKW0NhbWVyYV0KOyAwID0gQ291cGxlZCAoaGVhZCB0cmFja2luZyBtb3ZlcyBjYW1lcmEgKyBhaW0gKyBtb3ZlbWVudCkKOyAxID0gRGVjb3VwbGVkIChmcmVlLWxvb2sgdmlhIEQzRDkgaG9vaywgYWltIHN0YXlzIGluZGVwZW5kZW50KQo7IDIgPSBCb2R5VHJhY2tpbmcgKHBpdGNoIHRyYWNraW5nIG9ubHksIHlhdyBkaXNhYmxlZCkKTW9kZT0xCg==" }
+    ]
+  },
+
+  "files": [
+    { "source": "plugins/HeadTracking.dll", "target": "Data/NVSE/Plugins/HeadTracking.dll" }
+  ],
+
+  "runtime_requirements": [],
+  "dependencies": []
+}
