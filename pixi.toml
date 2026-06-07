@@ -12,7 +12,7 @@ sync = "git submodule update --remote cameraunlock-core"
 
 # Setup CMake build (x86 for FNV)
 setup = { cmd = """
-    powershell -Command "if (-not (Test-Path 'build')) { cmake -B build -G 'Visual Studio 16 2019' -A Win32 } else { Write-Host 'Build directory exists, skipping setup' -ForegroundColor Yellow }"
+    powershell -Command "if (-not (Test-Path 'build')) { cmake -B build -A Win32 } else { Write-Host 'Build directory exists, skipping setup' -ForegroundColor Yellow }"
 """ }
 
 # Build debug version
@@ -64,4 +64,8 @@ release = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/release.ps1"
 unrelease = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/unrelease.ps1" }
 
 [dependencies]
-# No pixi dependencies needed - using system CMake and Visual Studio
+# CMake drives the configure/build through the Visual Studio generator. Pinning
+# it here keeps the build reproducible (and the pixi environment non-empty, so
+# setup-pixi's post-install `pixi list` doesn't error). MSVC itself comes from
+# the system Visual Studio install, selected by CMake's default VS generator.
+cmake = ">=3.20"
