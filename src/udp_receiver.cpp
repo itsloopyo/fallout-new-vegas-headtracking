@@ -55,6 +55,10 @@ void UdpReceiver::Shutdown() {
     m_lastTimestampUs = 0;
 }
 
+bool UdpReceiver::TryConsumeRecenterRequest() {
+    return m_core.TryConsumeRecenterRequest();
+}
+
 bool UdpReceiver::Poll() {
     if (!m_started) {
         return false;

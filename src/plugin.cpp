@@ -203,6 +203,20 @@ void HeadTrackingPlugin::Update() {
         hasNewData = m_udpReceiver->Poll();
     }
 
+    if (m_cameraController && m_udpReceiver && m_udpReceiver->TryConsumeRecenterRequest()) {
+        const TrackingData& data = m_udpReceiver->GetLatestData();
+        if (data.valid) {
+            m_cameraController->Recenter(data);
+            SetPositionCenter(data);
+            m_poseInterpolator.Reset();
+            m_positionInterpolator.Reset();
+            HT_LOG_PLUGIN("Recentered by tracker app");
+            if (g_ConsolePrint) {
+                g_ConsolePrint("HeadTracking: Recentered by tracker app");
+            }
+        }
+    }
+
 #if HEADTRACKING_DEBUG_LOGGING
     if (shouldLog) {
         bool udpInit = m_udpReceiver && m_udpReceiver->IsInitialized();

@@ -40,6 +40,7 @@ public:
     // Returns true when a new sample arrived since the previous call.
     // Should be called every frame from the main loop.
     bool Poll();
+    bool TryConsumeRecenterRequest();
 
     // Most recently received tracking data (holds last known pose when idle).
     const TrackingData& GetLatestData() const { return m_latestData; }
