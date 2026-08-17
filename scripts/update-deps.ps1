@@ -14,7 +14,7 @@
 # the downloaded binary. No loader binary is ever committed.
 #
 # We call Invoke-FetchLatestLoader (the lower-level helper) directly rather than
-# Refresh-VendoredLoader, because the latter insists on committing the zip +
+# Update-VendoredLoader, because the latter insists on committing the zip +
 # LICENSE - exactly what the no-license exception forbids.
 #
 # xNVSE publishes two assets per release: nvse_*.7z (modern) and
