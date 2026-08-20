@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.0] - 2026-08-20
+
+### Added
+
+- drop mod-side centring, split smoothing, always write a log
+
 ## [Unreleased]
 
 ### Changed
