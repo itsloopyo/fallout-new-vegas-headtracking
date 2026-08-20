@@ -35,7 +35,7 @@ static float s_matrixAfterRotation[9] = {0};
 static bool s_hasRotationState = false;
 
 // Body aim direction in rotated camera frame (for crosshair projection).
-// Computed from actual rotation matrices — model-agnostic.
+// Computed from actual rotation matrices - model-agnostic.
 float g_bodyAimInCamera[3] = {1.0f, 0.0f, 0.0f};
 
 // Position offset state.  The engine refreshes the camera position each

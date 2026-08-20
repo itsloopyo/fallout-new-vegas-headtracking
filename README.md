@@ -67,7 +67,7 @@ No special hardware needed. OpenTrack's built-in **neuralnet tracker** uses any 
 2. Select your webcam in the tracker settings
 3. Set output to **UDP over network** (`127.0.0.1:4242`)
 4. Start tracking before launching the game
-5. Recenter in OpenTrack via its hotkey, and press **Home** in-game to recenter the mod as needed
+5. Centre the view in OpenTrack via its hotkey while looking straight ahead
 
 ### Phone App Setup
 
@@ -90,7 +90,6 @@ Two equivalent binding sets - use whichever your keyboard has:
 
 | Action              | Nav-cluster | Chord           |
 |---------------------|-------------|-----------------|
-| Recenter            | `Home`      | `Ctrl+Shift+T`  |
 | Toggle tracking     | `End`       | `Ctrl+Shift+Y`  |
 | Cycle tracking mode | `Page Up`   | `Ctrl+Shift+G`  |
 | Toggle reticle      | `Page Down` | `Ctrl+Shift+H`  |
@@ -123,8 +122,12 @@ Pitch=1.0
 Roll=1.0
 
 [Smoothing]
-; Smoothing amount (0.0 = instant, 0.99 = maximum smoothing)
-Amount=0
+; Smoothing applied when the tracker runs on this machine (loopback).
+; 0 = no smoothing, 1 = heavy. Covers rotation and position.
+LocalSmoothing=0.0
+; Smoothing applied when the tracker is a remote device on the network.
+; 0 = no smoothing, 1 = heavy. Covers rotation and position.
+RemoteSmoothing=0.15
 
 [Deadzone]
 ; Deadzone thresholds in degrees (0.0-30.0)
@@ -134,9 +137,8 @@ Roll=0.0
 
 [Hotkeys]
 ; Nav-cluster virtual key codes (hex). Each action also accepts a fixed
-; Ctrl+Shift+<letter> chord (T/Y/G/H/U) which is not configurable.
-; Home=0x24, End=0x23, PageUp=0x21, PageDown=0x22, Insert=0x2D
-Recenter=0x24
+; Ctrl+Shift+<letter> chord (Y/G/H/U) which is not configurable.
+; End=0x23, PageUp=0x21, PageDown=0x22, Insert=0x2D
 Toggle=0x23
 CycleTrackingMode=0x21
 ReticleToggle=0x22
@@ -166,24 +168,29 @@ ShowMessages=1
 **Plugin not loading:**
 - Verify xNVSE is installed correctly (`nvse_loader.exe` exists in game folder)
 - Launch via `nvse_loader.exe`, **not** `FalloutNV.exe` directly
-- Check `HeadTracking_debug.log` in the game folder for errors
+- Check `Data/NVSE/Plugins/HeadTracking.log` for errors. It is rewritten on
+  every launch and the previous run is kept as `HeadTracking.prev.log`, so
+  send both when reporting a problem.
 
 **No tracking response:**
+- Check `Data/NVSE/Plugins/HeadTracking.log` for the `UDP: First UDP packet
+  received` line. Without it nothing is reaching the game
 - Verify OpenTrack is running and tracking is active
 - Check that OpenTrack output is set to UDP `127.0.0.1:4242`
 - Press **End** to make sure tracking is enabled
-- Press **Home** to recenter
 - Ensure no firewall is blocking UDP port 4242
 
 **Camera stutters or jumps:**
 - Install [NVTF (New Vegas Tick Fix)](https://www.nexusmods.com/newvegas/mods/66537)
-- Increase smoothing in `HeadTracking.ini`
+- Increase the smoothing value your tracker uses in `HeadTracking.ini`:
+  `RemoteSmoothing` for a phone or another device on the network,
+  `LocalSmoothing` for a tracker running on this PC
 - Add small deadzones to filter tracker noise
 
 **View rotates the wrong way:**
 - Set the appropriate invert option in OpenTrack's output mapping, or adjust the axis curves
 - Confirm OpenTrack's output axes match your tracker orientation
-- Recenter with **Home** while looking straight ahead
+- Centre the view in your tracker app while looking straight ahead
 
 **Yaw feels wrong when looking up or down at extreme angles:**
 - Try toggling between world-locked and camera-local yaw with **Insert** (or `Ctrl+Shift+U`). World-locked (default) is horizon-stable; camera-local follows the camera's current up-axis.

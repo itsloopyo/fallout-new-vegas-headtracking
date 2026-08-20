@@ -2,10 +2,8 @@
 
 #include "hotkey_handler.h"
 #include "camera_controller.h"
-#include "udp_receiver.h"
 #include "game_state.h"
 #include "plugin.h"
-#include "tracking_data.h"
 #include "debug_log.h"
 
 #include <cameraunlock/input/chord_hotkeys.h>
@@ -14,13 +12,10 @@ namespace HeadTracking {
 
 HotkeyHandler::HotkeyHandler()
     : m_cameraController(nullptr)
-    , m_udpReceiver(nullptr)
-    , m_recenterKeyCode(VK_RECENTER_DEFAULT)
     , m_toggleKeyCode(VK_TOGGLE_DEFAULT)
     , m_cycleTrackingModeKeyCode(VK_CYCLE_TRACKING_MODE_DEFAULT)
     , m_reticleToggleKeyCode(VK_RETICLE_TOGGLE_DEFAULT)
     , m_yawModeKeyCode(VK_YAW_MODE_DEFAULT)
-    , m_recenterKeyState()
     , m_toggleKeyState()
     , m_cycleTrackingModeKeyState()
     , m_reticleToggleKeyState()
@@ -34,7 +29,7 @@ HotkeyHandler::HotkeyHandler()
 HotkeyHandler::~HotkeyHandler() {
 }
 
-void HotkeyHandler::Initialize(CameraController* cameraController, UdpReceiver* udpReceiver, GameState* gameState) {
+void HotkeyHandler::Initialize(CameraController* cameraController, GameState* gameState) {
     (void)gameState;  // Unused - game state check disabled, hotkeys always work
 
     if (m_initialized) {
@@ -49,12 +44,10 @@ void HotkeyHandler::Initialize(CameraController* cameraController, UdpReceiver* 
     }
 
     m_cameraController = cameraController;
-    m_udpReceiver = udpReceiver;
     m_initialized = true;
 
     if (g_ConsolePrint) {
         g_ConsolePrint("HeadTracking: Hotkey handler initialized");
-        g_ConsolePrint("HeadTracking:   Recenter:            0x%02X / Ctrl+Shift+T", m_recenterKeyCode);
         g_ConsolePrint("HeadTracking:   Toggle tracking:     0x%02X / Ctrl+Shift+Y", m_toggleKeyCode);
         g_ConsolePrint("HeadTracking:   Cycle tracking mode: 0x%02X / Ctrl+Shift+G", m_cycleTrackingModeKeyCode);
         g_ConsolePrint("HeadTracking:   Reticle toggle:      0x%02X / Ctrl+Shift+H", m_reticleToggleKeyCode);
@@ -67,8 +60,8 @@ HotkeyAction HotkeyHandler::Update() {
     static int updateCount = 0;
     updateCount++;
     if (updateCount <= 5) {
-        HT_LOG_HOTKEY("Update call %d: init=%d enabled=%d recenterKey=0x%02X toggleKey=0x%02X",
-                  updateCount, m_initialized, m_enabled, m_recenterKeyCode, m_toggleKeyCode);
+        HT_LOG_HOTKEY("Update call %d: init=%d enabled=%d toggleKey=0x%02X",
+                  updateCount, m_initialized, m_enabled, m_toggleKeyCode);
     }
 #endif
 
@@ -82,18 +75,16 @@ HotkeyAction HotkeyHandler::Update() {
     // Each action accepts EITHER its nav-cluster key (when Ctrl+Shift is not
     // held) OR its Ctrl+Shift+<letter> chord. Shared edge-detection state
     // means holding both does not double-fire.
-    bool recenterDown = IsActionDown(m_recenterKeyCode, VK_CHORD_RECENTER, ctrlShiftHeld);
     bool toggleDown = IsActionDown(m_toggleKeyCode, VK_CHORD_TOGGLE, ctrlShiftHeld);
     bool cycleDown = IsActionDown(m_cycleTrackingModeKeyCode, VK_CHORD_CYCLE_TRACKING_MODE, ctrlShiftHeld);
     bool reticleDown = IsActionDown(m_reticleToggleKeyCode, VK_CHORD_RETICLE_TOGGLE, ctrlShiftHeld);
     bool yawModeDown = IsActionDown(m_yawModeKeyCode, VK_CHORD_YAW_MODE, ctrlShiftHeld);
 
-    if (recenterDown || toggleDown || cycleDown || reticleDown || yawModeDown) {
-        HT_LOG_HOTKEY("Key press detected: Recenter=%d Toggle=%d Cycle=%d Reticle=%d YawMode=%d ctrlShift=%d",
-                  recenterDown, toggleDown, cycleDown, reticleDown, yawModeDown, ctrlShiftHeld);
+    if (toggleDown || cycleDown || reticleDown || yawModeDown) {
+        HT_LOG_HOTKEY("Key press detected: Toggle=%d Cycle=%d Reticle=%d YawMode=%d ctrlShift=%d",
+                  toggleDown, cycleDown, reticleDown, yawModeDown, ctrlShiftHeld);
     }
 
-    m_recenterKeyState.Update(recenterDown);
     m_toggleKeyState.Update(toggleDown);
     m_cycleTrackingModeKeyState.Update(cycleDown);
     m_reticleToggleKeyState.Update(reticleDown);
@@ -115,10 +106,6 @@ HotkeyAction HotkeyHandler::Update() {
         return true;
     };
 
-    if (tryFire(m_recenterKeyState, "Recenter")) {
-        ExecuteRecenter();
-        return HotkeyAction::Recenter;
-    }
     if (tryFire(m_toggleKeyState, "Toggle")) {
         ExecuteToggle();
         return HotkeyAction::Toggle;
@@ -155,25 +142,6 @@ bool HotkeyHandler::IsActionDown(int navVK, int chordLetterVK, bool ctrlShiftHel
         return IsKeyDown(chordLetterVK);
     }
     return IsKeyDown(navVK);
-}
-
-void HotkeyHandler::ExecuteRecenter() {
-    if (!m_cameraController) {
-        return;
-    }
-
-    // Get current tracking data for recentering
-    if (m_udpReceiver && m_udpReceiver->IsConnected()) {
-        const TrackingData& currentData = m_udpReceiver->GetLatestData();
-        if (currentData.valid) {
-            m_cameraController->Recenter(currentData);
-            ShowFeedback("Head tracking recentered");
-        } else {
-            ShowFeedback("Cannot recenter - no tracking data");
-        }
-    } else {
-        ShowFeedback("Cannot recenter - tracker not connected");
-    }
 }
 
 void HotkeyHandler::ExecuteToggle() {
@@ -214,10 +182,6 @@ bool HotkeyHandler::SetKeyBinding(int& target, KeyState& state, int vkCode, cons
     target = vkCode;
     state = KeyState();  // Reset edge-detect state for the new binding
     return true;
-}
-
-bool HotkeyHandler::SetRecenterKey(int vkCode) {
-    return SetKeyBinding(m_recenterKeyCode, m_recenterKeyState, vkCode, "recenter");
 }
 
 bool HotkeyHandler::SetToggleKey(int vkCode) {

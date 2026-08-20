@@ -11,7 +11,7 @@
 :: --- CONFIG BLOCK ---
 set "GAME_ID=fallout-new-vegas"
 set "MOD_DISPLAY_NAME=Fallout: NV Head Tracking"
-set "MOD_DLLS=HeadTracking.dll"
+set "MOD_DLLS=HeadTracking.dll HeadTracking.log HeadTracking.prev.log"
 set "MOD_INI=HeadTracking.ini"
 set "MOD_INTERNAL_NAME=FalloutNVHeadTracking"
 set "STATE_FILE=.headtracking-state.json"

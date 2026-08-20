@@ -5,12 +5,11 @@
 #include "d3d9_hook.h"
 #include "d3d9_internal.h"
 #include "camera_controller.h"
-#include "udp_receiver.h"
-#include "tracking_data.h"
 #include "game_offsets.h"
 #include "debug_log.h"
 #include "window_centering.h"
 
+#include <cstdio>
 #include <cstring>
 #include <cmath>
 
@@ -21,7 +20,6 @@ namespace HeadTracking {
 // Static member definitions
 void* D3D9Hook::s_originalEndScene = nullptr;
 CameraController* D3D9Hook::s_cameraController = nullptr;
-UdpReceiver* D3D9Hook::s_udpReceiver = nullptr;
 bool D3D9Hook::s_fatalErrorFlag = false;
 
 // D3D9 vtable indices
@@ -386,11 +384,6 @@ void D3D9Hook::SetCameraController(CameraController* controller) {
     HT_LOG_D3D("CameraController set: %p", controller);
 }
 
-void D3D9Hook::SetUdpReceiver(UdpReceiver* receiver) {
-    s_udpReceiver = receiver;
-    HT_LOG_D3D("UdpReceiver set: %p", receiver);
-}
-
 void D3D9Hook::SetEnabled(bool enabled) {
     m_enabled = enabled;
     HT_LOG_D3D("D3D9Hook enabled: %d", enabled);
@@ -486,26 +479,36 @@ HRESULT STDMETHODCALLTYPE D3D9Hook::HookedEndScene(IDirect3DDevice9* device) {
         double yawOffset = s_cameraController->GetCurrentYawOffset();
         double pitchOffset = s_cameraController->GetCurrentPitchOffset();
 
+        // Body follows head by INCREMENT, not by absolute offset. These writes
+        // accumulate into the player's rotation every frame, so applying the
+        // whole head offset each time integrates it: a head held 10 degrees off
+        // spins the body at roughly 600 deg/s at 60 fps. Track what has already
+        // been applied this ADS press and add only the difference. Reset on the
+        // entry edge so the first frame swings the body to where the head is
+        // looking, then it tracks.
+        static double appliedYaw = 0.0;
+        static double appliedPitch = 0.0;
+        if (!wasAiming) {
+            appliedYaw = 0.0;
+            appliedPitch = 0.0;
+        }
+
         uint8_t* player = *reinterpret_cast<uint8_t**>(GameOffsets::kPlayerBase);
         if (player) {
             float* pRotZ = reinterpret_cast<float*>(player + GameOffsets::kPlayerRotZ);
-            float yawRad = static_cast<float>(yawOffset * kDegToRadF);
+            float yawRad = static_cast<float>((yawOffset - appliedYaw) * kDegToRadF);
             *pRotZ += yawRad;
 
             float* pRotX = reinterpret_cast<float*>(player + GameOffsets::kPlayerRotX);
-            float pitchRad = static_cast<float>(-pitchOffset * kDegToRadF);
+            float pitchRad = static_cast<float>(-(pitchOffset - appliedPitch) * kDegToRadF);
             *pRotX += pitchRad;
-        }
 
-        if (s_udpReceiver && s_udpReceiver->IsConnected()) {
-            const TrackingData& data = s_udpReceiver->GetLatestData();
-            if (data.valid) {
-                s_cameraController->RecenterYawPitchOnly(data);
-            }
+            appliedYaw = yawOffset;
+            appliedPitch = pitchOffset;
         }
 
         if (!wasAiming) {
-            HT_LOG_D3D("ADS TRIGGERED - body follows head (yaw + pitch), camera keeps roll");
+            HT_LOG_D3D("ADS TRIGGERED - body follows head (yaw + pitch)");
         }
     }
     wasAiming = isAiming;
@@ -514,21 +517,6 @@ HRESULT STDMETHODCALLTYPE D3D9Hook::HookedEndScene(IDirect3DDevice9* device) {
         HT_LOG_D3D("Pause state changed: wasPaused=%d isPaused=%d", wasPaused, isPaused);
     }
 
-    if (wasPaused && !isPaused) {
-        HT_LOG_D3D("UNPAUSE detected! controller=%p udpReceiver=%p", s_cameraController, s_udpReceiver);
-        if (s_cameraController && s_udpReceiver) {
-            bool connected = s_udpReceiver->IsConnected();
-            HT_LOG_D3D("  udpReceiver connected=%d", connected);
-            if (connected) {
-                const TrackingData& currentData = s_udpReceiver->GetLatestData();
-                HT_LOG_D3D("  trackingData valid=%d yaw=%.2f pitch=%.2f", currentData.valid, currentData.yaw, currentData.pitch);
-                if (currentData.valid) {
-                    s_cameraController->Recenter(currentData);
-                    HT_LOG_D3D("  Recentered head tracking on unpause!");
-                }
-            }
-        }
-    }
     wasPaused = isPaused;
 
 #if HEADTRACKING_DEBUG_LOGGING
@@ -598,7 +586,7 @@ HRESULT STDMETHODCALLTYPE D3D9Hook::HookedEndScene(IDirect3DDevice9* device) {
                     }
                 }
             } else {
-                // Reticle disabled by user — restore stock crosshair
+                // Reticle disabled by user - restore stock crosshair
                 if (D3D9Internal::g_crosshairDisabled) {
                     D3D9Internal::SetCrosshairTileVisible(true);
                     D3D9Internal::g_crosshairDisabled = false;

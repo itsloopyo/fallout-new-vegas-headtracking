@@ -70,12 +70,6 @@ public:
     // Get current combined state flags
     GameStateFlags GetCurrentState() const { return m_currentState; }
 
-    // Check if loading screen just finished (was loading, now not loading)
-    bool JustFinishedLoading() const {
-        return HasFlag(m_previousState, GameStateFlags::InLoading) &&
-               !HasFlag(m_currentState, GameStateFlags::InLoading);
-    }
-
     // Check if head tracking should be active based on current state
     // Returns true if tracking should be applied to camera
     bool ShouldTrack() const;

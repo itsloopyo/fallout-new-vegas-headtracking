@@ -40,7 +40,6 @@ public:
     // Returns true when a new sample arrived since the previous call.
     // Should be called every frame from the main loop.
     bool Poll();
-    bool TryConsumeRecenterRequest();
 
     // Most recently received tracking data (holds last known pose when idle).
     const TrackingData& GetLatestData() const { return m_latestData; }
@@ -50,6 +49,11 @@ public:
 
     // True once Initialize has run (bound or retrying in the background).
     bool IsInitialized() const { return m_started; }
+
+    // True when the packets are arriving from another machine rather than from
+    // a tracker on this one. The core receiver classifies the sender address;
+    // this only forwards it, so the smoothing choice follows the connection.
+    bool IsRemoteConnection() const { return m_core.IsRemoteConnection(); }
 
 private:
     cameraunlock::UdpReceiver m_core;

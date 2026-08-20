@@ -156,6 +156,5 @@ Write-Host "  2. Start OpenTrack and enable tracking" -ForegroundColor Gray
 Write-Host "  3. Launch Fallout: New Vegas via xNVSE" -ForegroundColor Gray
 Write-Host ""
 Write-Host "Controls:" -ForegroundColor Yellow
-Write-Host "  Home - Recenter head tracking" -ForegroundColor Gray
-Write-Host "  End  - Toggle head tracking on/off" -ForegroundColor Gray
+Write-Host "  End - Toggle head tracking on/off" -ForegroundColor Gray
 Write-Host ""

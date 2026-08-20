@@ -78,18 +78,19 @@ public:
     // deltaTime is in seconds.
     void Update(const TrackingData& data, float deltaTime);
 
-    // Recenter tracking - sets current head position as neutral
-    void Recenter(const TrackingData& currentData);
-
-    // Recenter yaw and pitch only - preserves roll for ADS camera tilt
-    void RecenterYawPitchOnly(const TrackingData& currentData);
-
     // Enable/disable head tracking
     void SetEnabled(bool enabled);
     bool IsEnabled() const { return m_enabled; }
 
-    // Smoothing factor (0.0 = no smoothing, 1.0 = maximum smoothing)
-    void SetSmoothing(double smoothing);
+    // Smoothing factors (0.0 = no smoothing, 1.0 = maximum smoothing). Which
+    // one is used depends on where the tracking arrives from, set below.
+    void SetLocalSmoothing(double smoothing);
+    void SetRemoteSmoothing(double smoothing);
+
+    // True when the tracker is a remote device on the network rather than an
+    // app on this machine. Fed from the receiver every frame, so switching
+    // trackers mid-session switches the smoothing parameter with it.
+    void SetIsRemoteConnection(bool isRemote) { m_remoteConnection = isRemote; }
 
     // Sensitivity settings
     void SetSensitivity(const SensitivitySettings& sensitivity);
@@ -119,7 +120,7 @@ public:
     float GetPositionZ() const { return m_posZ; }
 
     // Check if currently applying rotation
-    bool IsActive() const { return m_enabled && m_hasValidCenter; }
+    bool IsActive() const { return m_enabled && m_hasTrackingData; }
 
     // Check if in decoupled (free-look) mode
     bool IsDecoupled() const { return m_cameraMode == CameraMode::Decoupled; }
@@ -131,12 +132,7 @@ private:
     // State
     bool m_enabled;
     bool m_initialized;
-    bool m_hasValidCenter;
-
-    // Center position (neutral head position)
-    double m_centerYaw;
-    double m_centerPitch;
-    double m_centerRoll;
+    bool m_hasTrackingData;
 
     // Current raw offsets (before smoothing)
     double m_rawYaw;
@@ -149,7 +145,9 @@ private:
     double m_smoothedRoll;
 
     // Settings
-    double m_smoothingFactor;
+    double m_localSmoothing;
+    double m_remoteSmoothing;
+    bool m_remoteConnection;
     SensitivitySettings m_sensitivity;
     DeadzoneSettings m_deadzone;
 

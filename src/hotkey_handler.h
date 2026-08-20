@@ -8,15 +8,12 @@ namespace HeadTracking {
 
 // Forward declarations
 class CameraController;
-class UdpReceiver;
 class GameState;
 
 // Default nav-cluster bindings
-//   Home      = recenter
 //   End       = toggle tracking
 //   Page Up   = cycle tracking mode (normal -> rot only -> pos only -> normal)
 //   Page Down = reticle toggle
-constexpr int VK_RECENTER_DEFAULT = VK_HOME;                // 0x24
 constexpr int VK_TOGGLE_DEFAULT = VK_END;                   // 0x23
 constexpr int VK_CYCLE_TRACKING_MODE_DEFAULT = VK_PRIOR;    // 0x21 (Page Up)
 constexpr int VK_RETICLE_TOGGLE_DEFAULT = VK_NEXT;          // 0x22 (Page Down)
@@ -25,9 +22,8 @@ constexpr int VK_RETICLE_TOGGLE_DEFAULT = VK_NEXT;          // 0x22 (Page Down)
 // catalogue-standard Page Down.
 constexpr int VK_YAW_MODE_DEFAULT = VK_INSERT;              // 0x2D
 
-// Fixed Ctrl+Shift+<letter> chord letters (T/Y/U/G/H/J cluster).
-// Slot order across all CameraUnlock mods: T, Y, G, H, U, J.
-constexpr int VK_CHORD_RECENTER = 'T';              // 0x54
+// Fixed Ctrl+Shift+<letter> chord letters, drawn from the T/Y/U/G/H/J cluster.
+// Slot order across all CameraUnlock mods: Y, G, H, U, J.
 constexpr int VK_CHORD_TOGGLE = 'Y';                // 0x59
 constexpr int VK_CHORD_CYCLE_TRACKING_MODE = 'G';   // 0x47
 constexpr int VK_CHORD_RETICLE_TOGGLE = 'H';        // 0x48
@@ -60,7 +56,6 @@ struct KeyState {
 // Hotkey action types
 enum class HotkeyAction {
     None,
-    Recenter,            // Reset center position to current head orientation
     Toggle,              // Toggle head tracking on/off
     CycleTrackingMode,   // Cycle: normal -> rotation-only -> position-only -> normal
     ReticleToggle,       // Toggle aim reticle on/off
@@ -79,7 +74,7 @@ public:
     HotkeyHandler& operator=(HotkeyHandler&&) = delete;
 
     // Initialize with references to controlled components
-    void Initialize(CameraController* cameraController, UdpReceiver* udpReceiver, GameState* gameState);
+    void Initialize(CameraController* cameraController, GameState* gameState);
 
     // Process hotkeys - call every frame
     // Returns the action that was triggered (if any)
@@ -91,7 +86,6 @@ public:
     // Configure nav-cluster hotkey bindings (virtual key codes).
     // Chord (Ctrl+Shift+<letter>) bindings are fixed and not configurable.
     // Returns false if key code is invalid (fails fast).
-    bool SetRecenterKey(int vkCode);
     bool SetToggleKey(int vkCode);
     bool SetCycleTrackingModeKey(int vkCode);
     bool SetReticleToggleKey(int vkCode);
@@ -117,9 +111,6 @@ private:
     // not double-fire when both bindings would otherwise resolve true.
     bool IsActionDown(int navVK, int chordLetterVK, bool ctrlShiftHeld) const;
 
-    // Execute the recenter action
-    void ExecuteRecenter();
-
     // Execute the toggle action
     void ExecuteToggle();
 
@@ -128,17 +119,14 @@ private:
 
     // References to controlled components (not owned)
     CameraController* m_cameraController;
-    UdpReceiver* m_udpReceiver;
 
     // Nav-cluster key bindings (virtual key codes)
-    int m_recenterKeyCode;
     int m_toggleKeyCode;
     int m_cycleTrackingModeKeyCode;
     int m_reticleToggleKeyCode;
     int m_yawModeKeyCode;
 
     // Shared edge-detect state per action (covers both nav and chord bindings)
-    KeyState m_recenterKeyState;
     KeyState m_toggleKeyState;
     KeyState m_cycleTrackingModeKeyState;
     KeyState m_reticleToggleKeyState;

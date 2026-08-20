@@ -56,6 +56,12 @@ public:
     // Deadzone settings (degrees)
     DeadzoneSettings GetDeadzone() const;
 
+    // Smoothing, chosen per connection: local for a tracker on this machine,
+    // remote for a device sending over the network. Both cover rotation and
+    // position.
+    double GetLocalSmoothing() const { return m_localSmoothing; }
+    double GetRemoteSmoothing() const { return m_remoteSmoothing; }
+
     // Check if configuration has been loaded
     bool IsLoaded() const { return m_loaded; }
 
@@ -80,8 +86,9 @@ private:
     double m_sensitivityPitch;
     double m_sensitivityRoll;
 
-    // Smoothing factor
-    double m_smoothing;
+    // Smoothing factors (local / remote connection)
+    double m_localSmoothing;
+    double m_remoteSmoothing;
 
     // Deadzone settings (degrees)
     double m_deadzoneYaw;
@@ -89,7 +96,6 @@ private:
     double m_deadzoneRoll;
 
     // Hotkey settings
-    int m_recenterKey;
     int m_toggleKey;
     int m_cycleTrackingModeKey;
     int m_reticleToggleKey;

@@ -50,15 +50,17 @@ private:
     // Check for config file changes and reload if needed
     void CheckConfigReload();
 
-    // Carry out the effect of a hotkey press (recenter, toggle, mode cycle, ...).
+    // Pushes the position limits, inversions and both smoothing values onto the
+    // position processor. Called at init and again on every config reload, so
+    // an edited smoothing value reaches position tracking as well as rotation.
+    void ApplyPositionSettings();
+
+    // Carry out the effect of a hotkey press (toggle, mode cycle, ...).
     void ApplyHotkeyAction(HotkeyAction action);
 
     // Run the 6DOF position pipeline for this frame's tracking sample and push
     // the resulting offset to the camera controller.
     void ProcessPositionTracking(const TrackingData& data, bool hasNewData, float deltaTime);
-
-    // Set the position-tracking neutral point from the current head pose.
-    void SetPositionCenter(const TrackingData& data);
 
     std::unique_ptr<Config> m_config;
     std::unique_ptr<UdpReceiver> m_udpReceiver;

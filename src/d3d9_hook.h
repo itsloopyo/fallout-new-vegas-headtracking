@@ -8,7 +8,6 @@ namespace HeadTracking {
 
 // Forward declarations
 class CameraController;
-class UdpReceiver;
 
 // D3D9 Hook for intercepting EndScene to modify camera right before frame presents
 // This runs after all game rendering setup, giving us a chance to modify the view
@@ -25,9 +24,6 @@ public:
 
     // Set the camera controller that provides rotation offsets
     void SetCameraController(CameraController* controller);
-
-    // Set the UDP receiver for tracking data (needed for recenter on unpause)
-    void SetUdpReceiver(UdpReceiver* receiver);
 
     // Enable/disable view matrix modification
     void SetEnabled(bool enabled);
@@ -74,9 +70,6 @@ private:
 
     // Camera controller reference
     static CameraController* s_cameraController;
-
-    // UDP receiver reference (for recenter on unpause)
-    static UdpReceiver* s_udpReceiver;
 
     // Fatal error flag (static for access from hooks)
     static bool s_fatalErrorFlag;

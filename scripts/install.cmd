@@ -24,7 +24,7 @@ set "FRAMEWORK_TYPE=xNVSE"
 set "XNVSE_VERSION=6.4.7"
 set "XNVSE_URL=https://github.com/xNVSE/NVSE/releases/download/6.4.7/xnvse_6_4_7_windows_7_legacy_version.zip"
 set "XNVSE_SHA256=339ae6c8f9bdd6c90a4feeaae49f3b45f828849ad8f3fb1ccca533ebe895bdbc"
-set "MOD_CONTROLS=Controls (or use Ctrl+Shift+T/Y/G/H/U chord equivalents):&echo   Home      - Recenter head tracking&echo   End       - Toggle head tracking on/off&echo   Page Up   - Cycle tracking mode (normal / rotation only / position only)&echo   Page Down - Toggle aim reticle&echo   Insert    - Toggle yaw mode (world-locked / camera-local)"
+set "MOD_CONTROLS=Controls (or use Ctrl+Shift+Y/G/H/U chord equivalents):&echo   End       - Toggle head tracking on/off&echo   Page Up   - Cycle tracking mode (normal / rotation only / position only)&echo   Page Down - Toggle aim reticle&echo   Insert    - Toggle yaw mode (world-locked / camera-local)"
 :: --- END CONFIG BLOCK ---
 
 call :detect_yes_flag %*

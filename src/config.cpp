@@ -7,16 +7,38 @@
 #include "game_state.h"
 #include "udp_receiver.h"
 
+#include <cameraunlock/logging/file_log.h>
+
+#include <cstdarg>
+#include <cstdio>
 #include <fstream>
 
 namespace HeadTracking {
 
+namespace culog = cameraunlock::logging;
+
+// Every reason Config::Load can fail has to reach the file log. g_ConsolePrint
+// is null in a shipping build (see udp_receiver.cpp), so routing a validation
+// failure only there left the user with plugin.cpp's "failed to load config -
+// head tracking is inactive" and nothing naming the key at fault.
+static void ConfigDiag(const char* level, const char* fmt, ...) {
+    char msg[512] = {};
+    va_list args;
+    va_start(args, fmt);
+    std::vsnprintf(msg, sizeof(msg), fmt, args);
+    va_end(args);
+    culog::Line("config: %s - %s", level, msg);
+    if (g_ConsolePrint) {
+        g_ConsolePrint("HeadTracking: %s - %s", level, msg);
+    }
+}
+
 // Default values (match HeadTracking.ini defaults)
 constexpr uint16_t DEFAULT_UDP_PORT = 4242;
 constexpr double DEFAULT_SENSITIVITY = 1.0;
-constexpr double DEFAULT_SMOOTHING = 0.0;
+constexpr double DEFAULT_LOCAL_SMOOTHING = 0.0;
+constexpr double DEFAULT_REMOTE_SMOOTHING = 0.15;
 constexpr double DEFAULT_DEADZONE = 0.0;
-constexpr int DEFAULT_RECENTER_KEY = 0x24;              // Home
 constexpr int DEFAULT_TOGGLE_KEY = 0x23;                // End
 constexpr int DEFAULT_CYCLE_TRACKING_MODE_KEY = 0x21;   // Page Up
 constexpr int DEFAULT_RETICLE_TOGGLE_KEY = 0x22;        // Page Down
@@ -34,11 +56,11 @@ Config::Config()
     , m_sensitivityYaw(DEFAULT_SENSITIVITY)
     , m_sensitivityPitch(DEFAULT_SENSITIVITY)
     , m_sensitivityRoll(DEFAULT_SENSITIVITY)
-    , m_smoothing(DEFAULT_SMOOTHING)
+    , m_localSmoothing(DEFAULT_LOCAL_SMOOTHING)
+    , m_remoteSmoothing(DEFAULT_REMOTE_SMOOTHING)
     , m_deadzoneYaw(DEFAULT_DEADZONE)
     , m_deadzonePitch(DEFAULT_DEADZONE)
     , m_deadzoneRoll(DEFAULT_DEADZONE)
-    , m_recenterKey(DEFAULT_RECENTER_KEY)
     , m_toggleKey(DEFAULT_TOGGLE_KEY)
     , m_cycleTrackingModeKey(DEFAULT_CYCLE_TRACKING_MODE_KEY)
     , m_reticleToggleKey(DEFAULT_RETICLE_TOGGLE_KEY)
@@ -56,11 +78,32 @@ Config::Config()
 Config::~Config() {
 }
 
+// Warned once per process rather than once per load: config is reloadable, and
+// repeating this on every reload buries it.
+//
+// The old value is deliberately NOT migrated into the new keys. The single
+// Smoothing value carried a hidden 0.15 floor, so the number in an existing
+// config does not mean what it used to: copying it across would hand a local
+// user smoothing they never chose under the new semantics, and copying it into
+// only one of the two keys would be a guess about which connection they were on.
+static void WarnRetiredSmoothingKey(const cameraunlock::IniReader& ini,
+                                    const char* section, const char* key) {
+    static bool warned = false;
+    if (warned) return;
+    if (ini.ReadString(section, key, "").empty()) return;
+    warned = true;
+    ConfigDiag("WARNING",
+        "Config key [%s] %s has been retired and is IGNORED. "
+        "Smoothing is now two keys: LocalSmoothing (default 0, applies to a tracker "
+        "on this machine) and RemoteSmoothing (default 0.15, applies to a tracker on "
+        "the network). The old value is not migrated because the semantics changed - "
+        "it carried a hidden 0.15 floor that no longer exists. Set the two new keys.",
+        section, key);
+}
+
 bool Config::Load(const std::string& iniPath) {
     if (iniPath.empty()) {
-        if (g_ConsolePrint) {
-            g_ConsolePrint("HeadTracking: ERROR - Config::Load called with empty path");
-        }
+        ConfigDiag("ERROR", "Config::Load called with empty path");
         return false;
     }
 
@@ -74,9 +117,7 @@ bool Config::Load(const std::string& iniPath) {
             g_ConsolePrint("HeadTracking: Creating default configuration...");
         }
         if (!CreateDefaultConfig()) {
-            if (g_ConsolePrint) {
-                g_ConsolePrint("HeadTracking: ERROR - Failed to create default config file");
-            }
+            ConfigDiag("ERROR", "Failed to create default config file at %s", m_iniPath.c_str());
             return false;
         }
         if (g_ConsolePrint) {
@@ -86,9 +127,7 @@ bool Config::Load(const std::string& iniPath) {
 
     // Open with the shared INI reader (also captures mod time for change detection)
     if (!m_ini.Open(m_iniPath)) {
-        if (g_ConsolePrint) {
-            g_ConsolePrint("HeadTracking: ERROR - Failed to open config file %s", m_iniPath.c_str());
-        }
+        ConfigDiag("ERROR", "Failed to open config file %s", m_iniPath.c_str());
         return false;
     }
 
@@ -105,7 +144,10 @@ bool Config::Load(const std::string& iniPath) {
     m_sensitivityRoll = m_ini.ReadDouble("Sensitivity", "Roll", DEFAULT_SENSITIVITY);
 
     // Smoothing section
-    m_smoothing = m_ini.ReadDouble("Smoothing", "Amount", DEFAULT_SMOOTHING);
+    m_localSmoothing = m_ini.ReadDouble("Smoothing", "LocalSmoothing", DEFAULT_LOCAL_SMOOTHING);
+    m_remoteSmoothing = m_ini.ReadDouble("Smoothing", "RemoteSmoothing", DEFAULT_REMOTE_SMOOTHING);
+
+    WarnRetiredSmoothingKey(m_ini, "Smoothing", "Amount");
 
     // Deadzone section
     m_deadzoneYaw = m_ini.ReadDouble("Deadzone", "Yaw", DEFAULT_DEADZONE);
@@ -113,7 +155,6 @@ bool Config::Load(const std::string& iniPath) {
     m_deadzoneRoll = m_ini.ReadDouble("Deadzone", "Roll", DEFAULT_DEADZONE);
 
     // Hotkeys section
-    m_recenterKey = m_ini.ReadHex("Hotkeys", "Recenter", DEFAULT_RECENTER_KEY);
     m_toggleKey = m_ini.ReadHex("Hotkeys", "Toggle", DEFAULT_TOGGLE_KEY);
     m_cycleTrackingModeKey = m_ini.ReadHex("Hotkeys", "CycleTrackingMode", DEFAULT_CYCLE_TRACKING_MODE_KEY);
     m_reticleToggleKey = m_ini.ReadHex("Hotkeys", "ReticleToggle", DEFAULT_RETICLE_TOGGLE_KEY);
@@ -136,9 +177,7 @@ bool Config::Load(const std::string& iniPath) {
             m_inputBlockMode = InputBlockMode::AllOverlays;
             break;
         default:
-            if (g_ConsolePrint) {
-                g_ConsolePrint("HeadTracking: ERROR - Invalid InputBlockMode %d (valid: 0-3)", inputBlockMode);
-            }
+            ConfigDiag("ERROR", "Invalid InputBlockMode %d (valid: 0-3)", inputBlockMode);
             return false;
     }
 
@@ -165,9 +204,7 @@ bool Config::Load(const std::string& iniPath) {
             m_cameraMode = CameraMode::BodyTracking;
             break;
         default:
-            if (g_ConsolePrint) {
-                g_ConsolePrint("HeadTracking: ERROR - Invalid Camera Mode %d (valid: 0-2)", cameraMode);
-            }
+            ConfigDiag("ERROR", "Invalid Camera Mode %d (valid: 0-2)", cameraMode);
             return false;
     }
 
@@ -177,48 +214,40 @@ bool Config::Load(const std::string& iniPath) {
     // Validate values - FAIL FAST on invalid config
     auto inDoubleRange = [](double v, double lo, double hi, const char* name) -> bool {
         if (v < lo || v > hi) {
-            if (g_ConsolePrint) {
-                g_ConsolePrint("HeadTracking: ERROR - %s %.2f out of range (valid: %.2f to %.2f)", name, v, lo, hi);
-            }
+            ConfigDiag("ERROR", "%s %.2f out of range (valid: %.2f to %.2f)", name, v, lo, hi);
             return false;
         }
         return true;
     };
     auto keyInRange = [](int code, const char* name) -> bool {
         if (code < 0x01 || code > 0xFE) {
-            if (g_ConsolePrint) {
-                g_ConsolePrint("HeadTracking: ERROR - Invalid %s key 0x%02X (valid: 0x01-0xFE)", name, code);
-            }
+            ConfigDiag("ERROR", "Invalid %s key 0x%02X (valid: 0x01-0xFE)", name, code);
             return false;
         }
         return true;
     };
 
     if (m_udpPort == 0) {
-        if (g_ConsolePrint) {
-            g_ConsolePrint("HeadTracking: ERROR - Invalid UDP port 0 (must be non-zero)");
-        }
+        ConfigDiag("ERROR", "Invalid UDP port 0 (must be non-zero)");
         return false;
     }
 
     if (!inDoubleRange(m_sensitivityYaw,   0.1, 5.0,  "Sensitivity Yaw"))   return false;
     if (!inDoubleRange(m_sensitivityPitch, 0.1, 5.0,  "Sensitivity Pitch")) return false;
     if (!inDoubleRange(m_sensitivityRoll,  0.1, 5.0,  "Sensitivity Roll"))  return false;
-    if (!inDoubleRange(m_smoothing,        0.0, 0.99, "Smoothing"))         return false;
+    if (!inDoubleRange(m_localSmoothing,   0.0, 1.0,  "LocalSmoothing"))    return false;
+    if (!inDoubleRange(m_remoteSmoothing,  0.0, 1.0,  "RemoteSmoothing"))   return false;
     if (!inDoubleRange(m_deadzoneYaw,      0.0, 30.0, "Deadzone Yaw"))      return false;
     if (!inDoubleRange(m_deadzonePitch,    0.0, 30.0, "Deadzone Pitch"))    return false;
     if (!inDoubleRange(m_deadzoneRoll,     0.0, 30.0, "Deadzone Roll"))     return false;
 
-    if (!keyInRange(m_recenterKey,          "recenter"))            return false;
     if (!keyInRange(m_toggleKey,            "toggle"))              return false;
     if (!keyInRange(m_cycleTrackingModeKey, "cycle tracking mode")) return false;
     if (!keyInRange(m_reticleToggleKey,     "reticle toggle"))      return false;
     if (!keyInRange(m_yawModeKey,           "yaw mode"))            return false;
 
     if (m_debounceMs < 50 || m_debounceMs > 2000) {
-        if (g_ConsolePrint) {
-            g_ConsolePrint("HeadTracking: ERROR - DebounceMs %llu out of range (valid: 50-2000)", m_debounceMs);
-        }
+        ConfigDiag("ERROR", "DebounceMs %llu out of range (valid: 50-2000)", m_debounceMs);
         return false;
     }
 
@@ -229,7 +258,8 @@ bool Config::Load(const std::string& iniPath) {
         g_ConsolePrint("HeadTracking:   UDP Port: %u", m_udpPort);
         g_ConsolePrint("HeadTracking:   Sensitivity: %.2f / %.2f / %.2f (yaw/pitch/roll)",
                        m_sensitivityYaw, m_sensitivityPitch, m_sensitivityRoll);
-        g_ConsolePrint("HeadTracking:   Smoothing: %.2f", m_smoothing);
+        g_ConsolePrint("HeadTracking:   Smoothing: %.2f local / %.2f remote",
+                       m_localSmoothing, m_remoteSmoothing);
         g_ConsolePrint("HeadTracking:   Deadzone: %.2f / %.2f / %.2f",
                        m_deadzoneYaw, m_deadzonePitch, m_deadzoneRoll);
     }
@@ -269,7 +299,8 @@ bool Config::ApplyToComponents(CameraController* camera, HotkeyHandler* hotkey,
     // Apply to camera controller
     if (camera) {
         camera->SetSensitivity(GetSensitivity());
-        camera->SetSmoothing(m_smoothing);
+        camera->SetLocalSmoothing(m_localSmoothing);
+        camera->SetRemoteSmoothing(m_remoteSmoothing);
         camera->SetDeadzone(GetDeadzone());
         camera->SetCameraMode(m_cameraMode);
         camera->SetWorldSpaceYaw(m_worldSpaceYaw);
@@ -277,9 +308,6 @@ bool Config::ApplyToComponents(CameraController* camera, HotkeyHandler* hotkey,
 
     // Apply to hotkey handler - FAIL FAST if key codes are invalid
     if (hotkey) {
-        if (!hotkey->SetRecenterKey(m_recenterKey)) {
-            return false;
-        }
         if (!hotkey->SetToggleKey(m_toggleKey)) {
             return false;
         }
@@ -356,8 +384,12 @@ bool Config::CreateDefaultConfig() {
     file << "Roll=" << DEFAULT_SENSITIVITY << "\n";
     file << "\n";
     file << "[Smoothing]\n";
-    file << "; Smoothing amount (0.0 = instant, 0.99 = maximum smoothing)\n";
-    file << "Amount=" << DEFAULT_SMOOTHING << "\n";
+    file << "; Smoothing applied when the tracker runs on this machine (loopback).\n";
+    file << "; 0 = no smoothing, 1 = heavy. Covers rotation and position.\n";
+    file << "LocalSmoothing=" << DEFAULT_LOCAL_SMOOTHING << "\n";
+    file << "; Smoothing applied when the tracker is a remote device on the network.\n";
+    file << "; 0 = no smoothing, 1 = heavy. Covers rotation and position.\n";
+    file << "RemoteSmoothing=" << DEFAULT_REMOTE_SMOOTHING << "\n";
     file << "\n";
     file << "[Deadzone]\n";
     file << "; Deadzone thresholds in degrees (0.0 to 30.0)\n";
@@ -367,9 +399,8 @@ bool Config::CreateDefaultConfig() {
     file << "\n";
     file << "[Hotkeys]\n";
     file << "; Nav-cluster virtual key codes (hex). Each action also accepts a\n";
-    file << "; fixed Ctrl+Shift+<letter> chord (T/Y/G/H/U) which is not configurable.\n";
-    file << "; Home=0x24, End=0x23, PageUp=0x21, PageDown=0x22, Insert=0x2D\n";
-    file << "Recenter=0x24\n";
+    file << "; fixed Ctrl+Shift+<letter> chord (Y/G/H/U) which is not configurable.\n";
+    file << "; End=0x23, PageUp=0x21, PageDown=0x22, Insert=0x2D\n";
     file << "Toggle=0x23\n";
     file << "CycleTrackingMode=0x21\n";
     file << "ReticleToggle=0x22\n";

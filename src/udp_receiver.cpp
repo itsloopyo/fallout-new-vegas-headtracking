@@ -2,6 +2,8 @@
 #include "plugin.h"
 #include "debug_log.h"
 
+#include <cameraunlock/logging/file_log.h>
+
 #include <string>
 
 namespace HeadTracking {
@@ -20,14 +22,18 @@ bool UdpReceiver::Initialize(uint16_t port) {
     m_lastTimestampUs = 0;
 
     // Surface the core's bind-failure / retry / recovery messages through the
-    // plugin's existing log sinks. This callback also fires from the core's
-    // background retry thread, so both sinks must be safe off the game thread:
-    // g_ConsolePrint is null in shipping builds and the debug log compiles out.
+    // plugin's log sinks. This callback also fires from the core's background
+    // retry thread, so every sink must be safe off the game thread:
+    // g_ConsolePrint is null in shipping builds, the debug log compiles out,
+    // and the shared file log is mutex-serialized. Every message the core
+    // emits is one-shot latched (first packet and its sender, bind retries,
+    // parse failures), so this cannot grow without bound.
     m_core.SetLog([](const std::string& msg) {
         if (g_ConsolePrint) {
             g_ConsolePrint("HeadTracking: %s", msg.c_str());
         }
         HT_LOG_UDP("%s", msg.c_str());
+        cameraunlock::logging::Line("UDP: %s", msg.c_str());
     });
 
     bool bound = m_core.Start(port);
@@ -39,6 +45,12 @@ bool UdpReceiver::Initialize(uint16_t port) {
         } else {
             g_ConsolePrint("HeadTracking: UDP port %d in use - retrying in background", m_port);
         }
+    }
+    if (bound) {
+        cameraunlock::logging::Line("UDP receiver bound to port %d", m_port);
+    } else {
+        cameraunlock::logging::Line(
+            "UDP port %d is in use - retrying the bind in the background every 5s", m_port);
     }
 
     return true;
@@ -55,10 +67,6 @@ void UdpReceiver::Shutdown() {
     m_lastTimestampUs = 0;
 }
 
-bool UdpReceiver::TryConsumeRecenterRequest() {
-    return m_core.TryConsumeRecenterRequest();
-}
-
 bool UdpReceiver::Poll() {
     if (!m_started) {
         return false;
@@ -71,8 +79,7 @@ bool UdpReceiver::Poll() {
         return false;
     }
 
-    // The core applies no offset (the plugin recenters via CameraController),
-    // so GetRotation returns the raw OpenTrack pose.
+    // The core applies no offset, so GetRotation returns the raw OpenTrack pose.
     float yaw, pitch, roll;
     if (m_core.GetRotation(yaw, pitch, roll)) {
         m_latestData.yaw = yaw;

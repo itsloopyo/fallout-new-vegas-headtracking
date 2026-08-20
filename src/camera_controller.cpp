@@ -22,17 +22,16 @@ constexpr float kMaxPitchRad = 1.5f;  // ~85.9 degrees, prevents gimbal lock
 CameraController::CameraController()
     : m_enabled(true)
     , m_initialized(false)
-    , m_hasValidCenter(false)
-    , m_centerYaw(0.0)
-    , m_centerPitch(0.0)
-    , m_centerRoll(0.0)
+    , m_hasTrackingData(false)
     , m_rawYaw(0.0)
     , m_rawPitch(0.0)
     , m_rawRoll(0.0)
     , m_smoothedYaw(0.0)
     , m_smoothedPitch(0.0)
     , m_smoothedRoll(0.0)
-    , m_smoothingFactor(0.0)
+    , m_localSmoothing(cameraunlock::math::kDefaultLocalSmoothing)
+    , m_remoteSmoothing(cameraunlock::math::kDefaultRemoteSmoothing)
+    , m_remoteConnection(false)
     , m_sensitivity()
     , m_deadzone()
     , m_cameraMode(CameraMode::Coupled)
@@ -48,16 +47,13 @@ void CameraController::Initialize() {
     }
 
     // Reset all state
-    m_centerYaw = 0.0;
-    m_centerPitch = 0.0;
-    m_centerRoll = 0.0;
     m_rawYaw = 0.0;
     m_rawPitch = 0.0;
     m_rawRoll = 0.0;
     m_smoothedYaw = 0.0;
     m_smoothedPitch = 0.0;
     m_smoothedRoll = 0.0;
-    m_hasValidCenter = false;
+    m_hasTrackingData = false;
 
     m_initialized = true;
 
@@ -84,22 +80,16 @@ void CameraController::Update(const TrackingData& data, float deltaTime) {
         return;
     }
 
-    // Auto-center on first valid data if no center set
-    if (!m_hasValidCenter) {
-        HT_LOG_CAMERA("Update: No valid center, recentering to yaw=%.2f pitch=%.2f", data.yaw, data.pitch);
-        Recenter(data);
-        // Don't return - continue processing so smoothed values get set this frame
-    }
+    m_hasTrackingData = true;
 
-    // Calculate raw offset from center position
-    double rawYawOffset = data.yaw - m_centerYaw;
-    double rawPitchOffset = data.pitch - m_centerPitch;
-    double rawRollOffset = data.roll - m_centerRoll;
+    // The tracker owns the centre, so its pose is taken as absolute.
+    double rawYawOffset = data.yaw;
+    double rawPitchOffset = data.pitch;
+    double rawRollOffset = data.roll;
 
 #if HEADTRACKING_DEBUG_LOGGING
     if (shouldLog) {
-        HT_LOG_CAMERA("Update: data yaw=%.2f pitch=%.2f, center yaw=%.2f pitch=%.2f, rawOffset yaw=%.2f pitch=%.2f",
-                    data.yaw, data.pitch, m_centerYaw, m_centerPitch, rawYawOffset, rawPitchOffset);
+        HT_LOG_CAMERA("Update: data yaw=%.2f pitch=%.2f", data.yaw, data.pitch);
     }
 #endif
 
@@ -132,9 +122,11 @@ void CameraController::Update(const TrackingData& data, float deltaTime) {
     m_rawPitch = rawPitchOffset;
     m_rawRoll = rawRollOffset;
 
-    // Baseline smoothing floor (kRemoteConnectionBaseline, 0.15) is always
-    // applied — below it, high-refresh displays show jitter on wireless trackers.
-    double effectiveSmoothing = cameraunlock::math::GetEffectiveSmoothing(m_smoothingFactor);
+    // Local trackers are already stable and get whatever the user asked for,
+    // down to none at all; a device sending over the network is the one that
+    // needs the jitter rejection. Nothing is applied on top of either value.
+    double effectiveSmoothing = cameraunlock::math::GetEffectiveSmoothing(
+        m_localSmoothing, m_remoteSmoothing, m_remoteConnection);
 
     m_smoothedYaw = cameraunlock::math::Smooth(m_smoothedYaw, rawYawOffset, effectiveSmoothing, static_cast<double>(deltaTime));
     m_smoothedPitch = cameraunlock::math::Smooth(m_smoothedPitch, rawPitchOffset, effectiveSmoothing, static_cast<double>(deltaTime));
@@ -149,44 +141,6 @@ void CameraController::Update(const TrackingData& data, float deltaTime) {
 
     // Apply rotation to game camera
     ApplyCameraRotation(m_smoothedYaw, m_smoothedPitch, m_smoothedRoll);
-}
-
-void CameraController::Recenter(const TrackingData& currentData) {
-    if (!currentData.valid) {
-        if (g_ConsolePrint) {
-            g_ConsolePrint("HeadTracking: Cannot recenter - no valid tracking data");
-        }
-        return;
-    }
-
-    m_centerYaw = currentData.yaw;
-    m_centerPitch = currentData.pitch;
-    m_centerRoll = currentData.roll;
-
-    // Reset smoothed values to prevent snap
-    m_smoothedYaw = 0.0;
-    m_smoothedPitch = 0.0;
-    m_smoothedRoll = 0.0;
-
-    m_hasValidCenter = true;
-
-    if (g_ConsolePrint) {
-        g_ConsolePrint("HeadTracking: Recentered (yaw=%.1f, pitch=%.1f, roll=%.1f)",
-                       m_centerYaw, m_centerPitch, m_centerRoll);
-    }
-}
-
-void CameraController::RecenterYawPitchOnly(const TrackingData& currentData) {
-    if (!currentData.valid) {
-        return;
-    }
-
-    // Update yaw and pitch centers, preserve roll for camera tilt during ADS
-    m_centerYaw = currentData.yaw;
-    m_centerPitch = currentData.pitch;
-    m_smoothedYaw = 0.0;
-    m_smoothedPitch = 0.0;
-    // m_smoothedRoll preserved - camera will still tilt
 }
 
 void CameraController::SetEnabled(bool enabled) {
@@ -208,8 +162,12 @@ void CameraController::SetEnabled(bool enabled) {
     }
 }
 
-void CameraController::SetSmoothing(double smoothing) {
-    m_smoothingFactor = cameraunlock::math::Clamp(smoothing, 0.0, 0.99);
+void CameraController::SetLocalSmoothing(double smoothing) {
+    m_localSmoothing = cameraunlock::math::Clamp(smoothing, 0.0, 1.0);
+}
+
+void CameraController::SetRemoteSmoothing(double smoothing) {
+    m_remoteSmoothing = cameraunlock::math::Clamp(smoothing, 0.0, 1.0);
 }
 
 void CameraController::SetSensitivity(const SensitivitySettings& sensitivity) {

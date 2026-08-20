@@ -14,12 +14,15 @@
 #include "debug_log.h"
 
 #include <cameraunlock/data/position_data.h>
+#include <cameraunlock/logging/file_log.h>
 #include <cameraunlock/math/quat4.h>
 #include <cameraunlock/time/qpc_clock.h>
 
 #include <string>
 
 namespace HeadTracking {
+
+namespace culog = cameraunlock::logging;
 
 constexpr float kMaxDeltaTime = 0.1f;
 
@@ -71,6 +74,7 @@ bool HeadTrackingPlugin::Initialize(const NVSEInterface* nvse) {
     // lifecycle events (load/exit/main loop) are delivered through it, so
     // there is no point initializing without it.
     if (!nvse->QueryInterface(kInterface_Messaging)) {
+        culog::Line("ERROR: NVSE has no messaging interface - head tracking is inactive");
         return false;
     }
 
@@ -80,8 +84,11 @@ bool HeadTrackingPlugin::Initialize(const NVSEInterface* nvse) {
         if (g_ConsolePrint) {
             g_ConsolePrint("HeadTracking: ERROR - Failed to load config from %s", iniPath.c_str());
         }
+        culog::Line("ERROR: failed to load config from %s - head tracking is inactive",
+                    iniPath.c_str());
         return false;
     }
+    culog::Line("Config loaded from %s", iniPath.c_str());
 
     // Non-fatal: if the port is held by another head-tracker the receiver keeps
     // a background thread retrying the bind every 5s and recovers on its own.
@@ -92,7 +99,7 @@ bool HeadTrackingPlugin::Initialize(const NVSEInterface* nvse) {
 
     m_cameraController->Initialize();
     m_gameState->Initialize();
-    m_hotkeyHandler->Initialize(m_cameraController.get(), m_udpReceiver.get(), m_gameState.get());
+    m_hotkeyHandler->Initialize(m_cameraController.get(), m_gameState.get());
 
     // Apply loaded configuration to all components
     if (!m_config->ApplyToComponents(m_cameraController.get(), m_hotkeyHandler.get(),
@@ -100,24 +107,22 @@ bool HeadTrackingPlugin::Initialize(const NVSEInterface* nvse) {
         if (g_ConsolePrint) {
             g_ConsolePrint("HeadTracking: ERROR - Failed to apply configuration");
         }
+        culog::Line("ERROR: failed to apply the loaded configuration - head tracking is inactive");
         return false;
     }
 
     m_poseInterpolator.Reset();
 
     // Initialize position processor (6DOF)
-    cameraunlock::PositionSettings posSettings(
-        1.0f, 1.0f, 1.0f,            // sensitivity X, Y, Z (1:1 physical mapping)
-        0.30f, 0.20f, 0.10f, 0.40f,  // limits X, Y, Z-forward, Z-back (inverted asymmetry)
-        0.15f,                        // smoothing
-        true, false, true             // invert X, Y, Z
-    );
-    m_positionProcessor.SetSettings(posSettings);
+    ApplyPositionSettings();
     m_positionInterpolator.Reset();
 
     m_initialized = true;
     m_lastUpdateTime = cameraunlock::time::QpcNowMicros();
     m_lastConfigCheckTime = cameraunlock::time::QpcNowMicros();
+
+    culog::Line("Plugin initialized. Hooks are installed when a save loads; "
+                "watch for the camera-mode line below.");
 
     return true;
 }
@@ -174,25 +179,9 @@ void HeadTrackingPlugin::Update() {
     // Update game state detection (must come before hotkey/camera updates)
     if (m_gameState) {
         m_gameState->Update();
-
-        // Recenter head tracking when loading finishes (player enters game world)
-        if (m_gameState->JustFinishedLoading()) {
-            if (m_cameraController && m_udpReceiver && m_udpReceiver->IsConnected()) {
-                const TrackingData& data = m_udpReceiver->GetLatestData();
-                if (data.valid) {
-                    m_cameraController->Recenter(data);
-                    SetPositionCenter(data);
-                    m_positionInterpolator.Reset();
-                    HT_LOG_PLUGIN("Auto-recentered after loading screen finished");
-                    if (g_ConsolePrint) {
-                        g_ConsolePrint("HeadTracking: Auto-recentered after loading");
-                    }
-                }
-            }
-        }
     }
 
-    // Process hotkeys (handles recenter, toggle, etc.)
+    // Process hotkeys
     if (m_hotkeyHandler) {
         ApplyHotkeyAction(m_hotkeyHandler->Update());
     }
@@ -201,20 +190,15 @@ void HeadTrackingPlugin::Update() {
     bool hasNewData = false;
     if (m_udpReceiver && m_udpReceiver->IsInitialized()) {
         hasNewData = m_udpReceiver->Poll();
-    }
 
-    if (m_cameraController && m_udpReceiver && m_udpReceiver->TryConsumeRecenterRequest()) {
-        const TrackingData& data = m_udpReceiver->GetLatestData();
-        if (data.valid) {
-            m_cameraController->Recenter(data);
-            SetPositionCenter(data);
-            m_poseInterpolator.Reset();
-            m_positionInterpolator.Reset();
-            HT_LOG_PLUGIN("Recentered by tracker app");
-            if (g_ConsolePrint) {
-                g_ConsolePrint("HeadTracking: Recentered by tracker app");
-            }
+        // Re-read every frame rather than once at startup: a player who swaps
+        // a local OpenTrack instance for a phone on WiFi mid-session gets the
+        // other smoothing parameter without restarting the game.
+        const bool isRemote = m_udpReceiver->IsRemoteConnection();
+        if (m_cameraController) {
+            m_cameraController->SetIsRemoteConnection(isRemote);
         }
+        m_positionProcessor.SetIsRemoteConnection(isRemote);
     }
 
 #if HEADTRACKING_DEBUG_LOGGING
@@ -260,23 +244,10 @@ void HeadTrackingPlugin::Update() {
     }
 }
 
-void HeadTrackingPlugin::SetPositionCenter(const TrackingData& data) {
-    m_positionProcessor.SetCenter(cameraunlock::PositionData(
-        static_cast<float>(data.x * kCmToM),
-        static_cast<float>(data.y * kCmToM),
-        static_cast<float>(data.z * kCmToM)));
-}
-
 void HeadTrackingPlugin::ApplyHotkeyAction(HotkeyAction action) {
-    if (action == HotkeyAction::Recenter || action == HotkeyAction::Toggle) {
+    if (action == HotkeyAction::Toggle) {
         m_poseInterpolator.Reset();
         m_positionInterpolator.Reset();
-        if (action == HotkeyAction::Recenter && m_udpReceiver && m_udpReceiver->IsConnected()) {
-            const TrackingData& recData = m_udpReceiver->GetLatestData();
-            if (recData.valid) {
-                SetPositionCenter(recData);
-            }
-        }
     } else if (action == HotkeyAction::CycleTrackingMode) {
         // Three-state cycle:
         //   0 = normal (rotation + position)
@@ -347,6 +318,34 @@ void HeadTrackingPlugin::ProcessPositionTracking(const TrackingData& data, bool 
         m_lastPositionOffset.x, m_lastPositionOffset.y, m_lastPositionOffset.z);
 }
 
+void HeadTrackingPlugin::ApplyPositionSettings() {
+    // Field by field rather than through the positional constructor: the
+    // argument list is long enough that a value silently landing on the
+    // neighbouring parameter would compile clean and only show up as wrong
+    // position limits.
+    //
+    // The limits are deliberately ordered so the generous 0.40 sits on the
+    // BACK limit: this mod feeds the processor a z whose forward lean is the
+    // positive direction, and the processor clamps z as [-limit_z,
+    // +limit_z_back]. Do not "fix" this by swapping them.
+    cameraunlock::PositionSettings posSettings;
+    posSettings.sensitivity_x = 1.0f;  // 1:1 physical mapping
+    posSettings.sensitivity_y = 1.0f;
+    posSettings.sensitivity_z = 1.0f;
+    posSettings.limit_x = 0.30f;
+    posSettings.limit_y = 0.20f;
+    posSettings.limit_z = 0.10f;
+    posSettings.limit_z_back = 0.40f;
+    posSettings.invert_x = true;
+    posSettings.invert_y = false;
+    posSettings.invert_z = true;
+    // Position uses the same two smoothing values as rotation; the connection
+    // flag that picks between them is pushed from the receiver each frame.
+    posSettings.local_smoothing = static_cast<float>(m_config->GetLocalSmoothing());
+    posSettings.remote_smoothing = static_cast<float>(m_config->GetRemoteSmoothing());
+    m_positionProcessor.SetSettings(posSettings);
+}
+
 void HeadTrackingPlugin::CheckConfigReload() {
     if (!m_config || !m_config->IsLoaded()) {
         return;
@@ -367,6 +366,17 @@ void HeadTrackingPlugin::CheckConfigReload() {
                 g_ConsolePrint("HeadTracking: ERROR - Failed to apply reloaded config");
             }
         }
+
+        // ApplyToComponents has no PositionProcessor parameter, so the reloaded
+        // smoothing values would otherwise reach rotation only and leave
+        // position on whatever was read at startup. Push them here as well or
+        // the two halves of the pipeline drift apart for the rest of the
+        // session and the camera swims.
+        //
+        // Unconditional on purpose: ApplyToComponents pushes the camera
+        // smoothing before its hotkey validation can fail, so on a partial
+        // failure rotation has already moved and position must follow it.
+        ApplyPositionSettings();
     }
 }
 
@@ -384,20 +394,24 @@ void HeadTrackingPlugin::OnGameLoaded() {
         if (m_cameraController->GetCameraMode() == CameraMode::Coupled) {
             modeName = "Coupled";
             HT_LOG_PLUGIN("Camera mode: Coupled");
+            culog::Line("Camera mode: Coupled - no D3D9 hook is installed in this mode");
         } else if (m_cameraController->IsDecoupled()) {
             modeName = "Decoupled (D3D9 EndScene hook)";
             HT_LOG_PLUGIN("Camera mode: Decoupled - initializing D3D9 EndScene hook");
 
             // Initialize D3D9 EndScene hook for decoupled mode
             D3D9Hook::Instance().SetCameraController(m_cameraController.get());
-            D3D9Hook::Instance().SetUdpReceiver(m_udpReceiver.get());
+            culog::Line("Camera mode: Decoupled - installing the D3D9 EndScene hook");
             if (D3D9Hook::Instance().Initialize()) {
                 HT_LOG_PLUGIN("D3D9 EndScene hook initialized successfully");
+                culog::Line("D3D9 EndScene hook installed");
                 if (g_ConsolePrint) {
                     g_ConsolePrint("HeadTracking: D3D9 hook active for decoupled mode");
                 }
             } else {
                 HT_LOG_PLUGIN("ERROR: D3D9 hook initialization failed");
+                culog::Line("ERROR: D3D9 hook failed (%s) - head tracking will not render",
+                            D3D9Hook::Instance().GetErrorMessage());
                 if (g_ConsolePrint) {
                     g_ConsolePrint("HeadTracking: ERROR - D3D9 hook failed: %s",
                                    D3D9Hook::Instance().GetErrorMessage());
@@ -406,6 +420,7 @@ void HeadTrackingPlugin::OnGameLoaded() {
         } else if (m_cameraController->GetCameraMode() == CameraMode::BodyTracking) {
             modeName = "BodyTracking";
             HT_LOG_PLUGIN("Camera mode: BodyTracking");
+            culog::Line("Camera mode: BodyTracking - no D3D9 hook is installed in this mode");
         }
         if (g_ConsolePrint) {
             g_ConsolePrint("HeadTracking: Game loaded, camera mode: %s", modeName);

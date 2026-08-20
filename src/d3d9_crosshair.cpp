@@ -274,7 +274,7 @@ void DrawAimCrosshair(IDirect3DDevice9* device, const D3DVIEWPORT9& vp) {
     float tanHalfFovX = g_mainCameraTanFovX;
     float tanHalfFovY = g_mainCameraTanFovY;
 
-    // Body aim direction in rotated camera frame — pre-computed in culling hook
+    // Body aim direction in rotated camera frame - pre-computed in culling hook
     // from the actual rotation matrices. This is model-agnostic: any rotation
     // model (sequential Euler, horizon-locked, etc.) produces correct results.
     float bDepth = g_bodyAimInCamera[0];
@@ -364,7 +364,7 @@ void DrawAimCrosshair(IDirect3DDevice9* device, const D3DVIEWPORT9& vp) {
     // Single vertex buffer: 12 circle triangles (36 verts) + 4 bracket arms (24 verts) = 20 triangles
     Vertex allVerts[60];
 
-    // Circle segments (indices 0-35) — uses precomputed trig table
+    // Circle segments (indices 0-35) - uses precomputed trig table
     for (int i = 0; i < segments; i++) {
         allVerts[i * 3 + 0] = { centerX, centerY, 0.0f, 1.0f, redColor };
         allVerts[i * 3 + 1] = { centerX + radius * s_circle.cx[i],   centerY + radius * s_circle.sy[i],   0.0f, 1.0f, redColor };

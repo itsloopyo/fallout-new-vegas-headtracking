@@ -28,7 +28,7 @@ extern float g_mainCameraTanFovY;
 
 // Body aim direction in the rotated camera frame, computed in culling hook.
 // [0]=depth (forward), [1]=up, [2]=right.
-// The crosshair reads this directly — no separate angle-based formula needed.
+// The crosshair reads this directly - no separate angle-based formula needed.
 extern float g_bodyAimInCamera[3];
 
 // Normal FOV (captured at startup, before any zoom)
