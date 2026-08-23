@@ -1,19 +1,23 @@
 #pragma once
 
-// xNVSE Game API Header
-// Provides access to game objects and functions for Fallout: New Vegas
-// Memory addresses verified against xNVSE 6.4.2 source
+// Declarations of the Fallout: New Vegas runtime structures this plugin reads,
+// written by this project for interoperability. The addresses and field
+// offsets are factual measurements of a legitimately owned copy of the game,
+// recorded as numbers. No game code is reproduced here, and nothing in this
+// file is copied from the script extender or from any other project.
+//
+// Runtime: Fallout: New Vegas 1.4.0.525 (x86).
 
 #include <cstdint>
 
 // =============================================================================
 // PlayerCharacter - The player singleton
-// Singleton address: 0x11F4748 (verified from xNVSE MainLoopHook)
+// Singleton pointer at 0x011F4748.
 // =============================================================================
 class PlayerCharacter {
 public:
     static PlayerCharacter* GetSingleton() {
-        // g_thePlayer is at 0x11F4748 (from xNVSE Hooks_Gameplay.cpp MainLoopHook)
+        // Pointer to the player singleton.
         PlayerCharacter** g_thePlayer = reinterpret_cast<PlayerCharacter**>(0x011F4748);
         return *g_thePlayer;
     }

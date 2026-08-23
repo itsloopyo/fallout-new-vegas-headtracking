@@ -23,8 +23,6 @@ endif()
 # CameraUnlock shared library (submodule)
 add_subdirectory(${CMAKE_SOURCE_DIR}/cameraunlock-core/cpp cameraunlock-core)
 
-# NVSE SDK include path
-include_directories(${CMAKE_SOURCE_DIR}/nvse)
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
 # Source files
@@ -59,14 +57,16 @@ set(HEADERS
     src/window_centering.h
 )
 
-# NVSE SDK headers
-set(NVSE_HEADERS
-    nvse/nvse/PluginAPI.h
-    nvse/nvse/GameAPI.h
+# Our own declarations of the script-extender plugin ABI and the game's
+# runtime layout. Interoperability declarations, not a vendored SDK - see
+# THIRD-PARTY-NOTICES.md.
+set(NVSE_ABI_HEADERS
+    src/nvse_abi/PluginAPI.h
+    src/nvse_abi/GameAPI.h
 )
 
 # Create DLL
-add_library(HeadTracking SHARED ${SOURCES} ${HEADERS} ${NVSE_HEADERS})
+add_library(HeadTracking SHARED ${SOURCES} ${HEADERS} ${NVSE_ABI_HEADERS})
 
 # Link CameraUnlock library, Winsock and D3D9
 target_link_libraries(HeadTracking
@@ -104,7 +104,7 @@ set_target_properties(HeadTracking PROPERTIES
 # Generate Visual Studio filters matching directory structure
 source_group("Source Files" FILES ${SOURCES})
 source_group("Header Files" FILES ${HEADERS})
-source_group("NVSE SDK" FILES ${NVSE_HEADERS})
+source_group("NVSE ABI" FILES ${NVSE_ABI_HEADERS})
 
 # Print configuration summary
 message(STATUS "")

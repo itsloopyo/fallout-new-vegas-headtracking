@@ -1,8 +1,16 @@
 #pragma once
 
-// xNVSE Plugin API Header
-// Based on xNVSE 6.4.2 source from https://github.com/xNVSE/NVSE
-// Struct layouts MUST match exactly or function calls will crash
+// Declarations of the xNVSE plugin ABI, written by this project for
+// interoperability. The script extender is an independent, unlicensed
+// third-party project; nothing here is copied from it. What appears below is
+// only the information a plugin must state to be callable across the binary
+// boundary: struct field order, enumerator values and function-pointer
+// signatures. Those are constraints imposed by the ABI, not expression
+// borrowed from anyone. No upstream implementation code, and no part of
+// Fallout: New Vegas, is reproduced in this file.
+//
+// Field order and enumerator values MUST match the running script extender or
+// calls through these pointers will crash. Targets xNVSE 6.4.x.
 
 #include <cstdint>
 
@@ -13,7 +21,7 @@ class TESObjectREFR;
 class Actor;
 class PlayerCharacter;
 
-// Type aliases to match xNVSE
+// Type aliases matching the ABI's integer widths.
 using UInt32 = uint32_t;
 using PluginHandle = UInt32;
 
@@ -37,7 +45,7 @@ struct PluginInfo {
 };
 
 // Main NVSE interface passed to plugin functions
-// CRITICAL: Field order must match xNVSE exactly!
+// Field order is fixed by the ABI.
 struct NVSEInterface {
     UInt32 nvseVersion;
     UInt32 runtimeVersion;

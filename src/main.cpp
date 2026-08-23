@@ -7,8 +7,8 @@
 
 #define RUNTIME
 
-#include "nvse/PluginAPI.h"
-#include "nvse/GameAPI.h"
+#include "nvse_abi/PluginAPI.h"
+#include "nvse_abi/GameAPI.h"
 
 #include "plugin.h"
 #include "version.h"

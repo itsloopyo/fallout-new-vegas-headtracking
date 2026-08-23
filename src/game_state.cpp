@@ -3,7 +3,7 @@
 #include "game_state.h"
 #include "plugin.h"
 
-#include "nvse/GameAPI.h"
+#include "nvse_abi/GameAPI.h"
 
 namespace HeadTracking {
 

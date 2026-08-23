@@ -19,7 +19,7 @@ $ProgressPreference = 'SilentlyContinue'
     - install.cmd, uninstall.cmd (root)
     - plugins/HeadTracking.dll, plugins/HeadTracking.ini
     - shared/ (find-game.ps1 + games.json detection bundle)
-    - README.md, CHANGELOG.md, LICENSE
+    - README.md, CHANGELOG.md, LICENSE, THIRD-PARTY-NOTICES.md
 
     Nexus ZIP (FalloutNVHeadTracking-v<version>-nexus.zip):
     - Data/NVSE/Plugins/HeadTracking.dll + HeadTracking.ini only
@@ -134,14 +134,17 @@ Write-Host "  launcher-manifest.json (version $version)" -ForegroundColor Green
 # Bundle the shared detection bundle (find-game.ps1 + games.json) for install.cmd's shim.
 Copy-SharedBundle -StagingDir $stagingDir -CoreRoot (Join-Path $projectRoot 'cameraunlock-core')
 
-# Copy documentation
-$docFiles = @("README.md", "CHANGELOG.md", "LICENSE")
+# Copy documentation. Every ZIP we publish is a binary distribution, so the
+# licences of everything compiled into the payload require their notices to
+# travel with it. A missing one is a compliance failure, not a file to skip.
+$docFiles = @("README.md", "CHANGELOG.md", "LICENSE", "THIRD-PARTY-NOTICES.md")
 foreach ($doc in $docFiles) {
     $docPath = Join-Path $projectRoot $doc
-    if (Test-Path $docPath) {
-        Copy-Item $docPath -Destination $stagingDir -Force
-        Write-Host "  $doc" -ForegroundColor Green
+    if (-not (Test-Path $docPath)) {
+        throw "Required notice file not found: $doc. Every published ZIP is a binary distribution and must carry it."
     }
+    Copy-Item $docPath -Destination $stagingDir -Force
+    Write-Host "  $doc" -ForegroundColor Green
 }
 
 Write-Host ""
@@ -178,6 +181,15 @@ if (Test-Path $nexusZip) {
 }
 
 Write-Host "Creating nexus ZIP..." -ForegroundColor Cyan
+# The Nexus ZIP is a binary distribution too, so it carries the same notices.
+foreach ($noticeDoc in @('LICENSE', 'THIRD-PARTY-NOTICES.md', 'README.md')) {
+    $noticeSrc = Join-Path $projectRoot $noticeDoc
+    if (-not (Test-Path $noticeSrc)) {
+        throw "Required notice file not found: $noticeDoc. Every published ZIP is a binary distribution and must carry it."
+    }
+    Copy-Item $noticeSrc -Destination $nexusStaging -Force
+    Write-Host "  $noticeDoc" -ForegroundColor Green
+}
 Push-Location $nexusStaging
 try {
     Compress-Archive -Path ".\*" -DestinationPath $nexusZip -Force

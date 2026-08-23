@@ -249,6 +249,11 @@ pixi run package
 
 MIT. See [LICENSE](LICENSE).
 
+Third-party components, and the reasons xNVSE is downloaded at install time
+rather than bundled, are recorded in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). This mod redistributes no
+Fallout: New Vegas code or assets and no xNVSE binary.
+
 ## Credits
 
 - [Obsidian Entertainment](https://www.obsidian.net/) - Fallout: New Vegas

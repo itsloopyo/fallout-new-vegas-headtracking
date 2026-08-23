@@ -8,6 +8,39 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `LICENSE` was not the MIT licence. The grant clause read "and to furnish to
+  do so" where MIT reads "and to permit persons to whom the Software is
+  furnished to do so", so every release so far shipped a mangled text while the
+  README, the launcher manifest and the notices all declared MIT. Restored the
+  canonical wording.
+- Both release ZIPs now carry `THIRD-PARTY-NOTICES.md`, and the Nexus ZIP now
+  carries `LICENSE` and `README.md` as well. The Nexus ZIP previously shipped
+  as a bare DLL and INI with no licence file of any kind, which does not
+  satisfy the MIT notice obligation of `cameraunlock-core`, a separate
+  copyright holder statically linked into `HeadTracking.dll`. The packager now
+  throws on a missing notice file instead of skipping it silently, and
+  `validate-release.ps1` gates on the same files before a tag is cut.
+
+### Changed
+
+- Consolidated `THIRD_PARTY_LICENSES.md` into `THIRD-PARTY-NOTICES.md`. The old
+  file named licences without reproducing them and asserted an xNVSE licence
+  ("zlib for `common/`") that upstream does not declare; the xNVSE repository
+  carries no `LICENSE` file and the GitHub API reports its licence as null.
+  The notices now reproduce the full MIT text of `cameraunlock-core`, state the
+  verified xNVSE position, and record that the statically linked Visual C++
+  runtime is covered by the Visual Studio distributable-code terms.
+- Moved the plugin ABI declarations from `nvse/nvse/` to `src/nvse_abi/` and
+  rewrote their file headers. The old path mirrored the upstream xNVSE
+  repository layout and the headers described themselves as "based on xNVSE
+  source", which read as a vendored copy of an unlicensed project. They are our
+  own declarations of struct field order, enumerator values and function-pointer
+  signatures, which is what ABI interoperability requires and contains no
+  upstream implementation code. Nothing about the build output changes.
+
+
 ### Changed
 
 - The mod now always writes `Data/NVSE/Plugins/HeadTracking.log`. Previously

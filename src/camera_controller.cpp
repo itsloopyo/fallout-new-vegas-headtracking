@@ -10,7 +10,7 @@
 #include <cameraunlock/math/deadzone_utils.h>
 #include <cameraunlock/math/smoothing_utils.h>
 
-#include "nvse/GameAPI.h"
+#include "nvse_abi/GameAPI.h"
 
 #include <algorithm>
 #include <cmath>

@@ -73,6 +73,19 @@ if (-not (Test-Path "README.md")) {
     Write-ColorOutput "README.md exists" "Green"
 }
 
+# Check 3b: Verify the licence files a binary distribution must carry
+Write-ColorOutput ""
+Write-ColorOutput "Checking licence files..." "Gray"
+
+foreach ($noticeDoc in @("LICENSE", "THIRD-PARTY-NOTICES.md")) {
+    if (-not (Test-Path $noticeDoc)) {
+        Write-ColorOutput "ERROR: $noticeDoc not found - every published ZIP is a binary distribution and must carry it" "Red"
+        $allPassed = $false
+    } else {
+        Write-ColorOutput "$noticeDoc exists" "Green"
+    }
+}
+
 # Check 4: Verify config file exists
 Write-ColorOutput ""
 Write-ColorOutput "Checking config/HeadTracking.ini..." "Gray"

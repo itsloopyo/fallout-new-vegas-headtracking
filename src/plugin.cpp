@@ -1,7 +1,7 @@
 #include <Windows.h>
 
 #include "plugin.h"
-#include "../nvse/nvse/PluginAPI.h"
+#include "nvse_abi/PluginAPI.h"
 #include "version.h"
 #include "config.h"
 #include "udp_receiver.h"
