@@ -1,8 +1,8 @@
 # Fallout: New Vegas Head Tracking
 
-An NVSE plugin that adds head tracking to Fallout: New Vegas, letting you look around the Mojave naturally while your weapon aim stays on your mouse or controller, with no VR headset required.
+![Fallout: New Vegas running with this mod](https://raw.githubusercontent.com/itsloopyo/fallout-new-vegas-headtracking/main/assets/readme-clip.gif)
 
-<!-- ![Mod GIF](https://raw.githubusercontent.com/itsloopyo/fallout-new-vegas-headtracking/main/assets/readme-clip.gif) -->
+An unofficial head tracking mod for Fallout: New Vegas that moves the view with your head while your mouse or controller keeps aiming, driven by OpenTrack over UDP, with no VR headset required.
 
 ## Features
 
@@ -42,47 +42,64 @@ If you prefer to place files by hand, or you are extracting the Nexus ZIP (which
 
 ## Setting Up OpenTrack
 
-1. Download and install [OpenTrack](https://github.com/opentrack/opentrack/releases)
-2. Configure your tracker as input
-3. Set output to **UDP over network**
-4. Host: `127.0.0.1`, Port: `4242`
-5. Start tracking before launching the game
-6. Launch Fallout: New Vegas via `nvse_loader.exe`
+The mod listens for OpenTrack pose data on UDP port `4242`, on every network
+interface. One datagram is six little-endian 64-bit floats in the order
+`x, y, z, yaw, pitch, roll`: position in centimetres, rotation in degrees, 48
+bytes in total. Anything that sends that to that port drives the view.
+OpenTrack's **UDP over network** output sends exactly this, and the steps below
+set it up.
 
-### VR Headset Setup
+1. Install [OpenTrack](https://github.com/opentrack/opentrack/releases).
+2. Pick a tracker under **Input**, using the notes below.
+3. Set **Output** to **UDP over network**, host `127.0.0.1`, port `4242`.
+4. Press **Start**. Tracking and the game can start in either order.
 
-A VR headset makes an excellent high-precision tracker.
+### Webcam
 
-1. Connect your headset to the PC via Air Link (Quest) or Virtual Desktop.
-2. Start SteamVR.
-3. In OpenTrack, set the input to **SteamVR**.
-4. Set output to **UDP over network** (`127.0.0.1:4242`).
-5. Start tracking before launching the game.
+OpenTrack ships a `neuralnet tracker` input that reads a plain webcam. Select it
+under **Input**, pick your camera in its settings, and use the output settings
+above. How well it tracks depends on your camera and your lighting, so try it
+before buying anything.
 
-### Webcam Setup
+### Phone
 
-No special hardware needed. OpenTrack's built-in **neuralnet tracker** uses any webcam for 6DOF face tracking.
+A phone app can reach the mod directly, with no OpenTrack on the PC, if it sends
+the datagram described above. Point it at this PC's IP address (run `ipconfig`
+to find it) on port `4242`. Not every phone tracker speaks this protocol, so
+check yours for an OpenTrack or UDP output option first. [Headcam](https://headcam.app)
+sends it, and I wrote it so decent tracking is free for anyone who already owns
+a phone.
 
-1. In OpenTrack, set the input to **neuralnet tracker**
-2. Select your webcam in the tracker settings
-3. Set output to **UDP over network** (`127.0.0.1:4242`)
-4. Start tracking before launching the game
-5. Centre the view in OpenTrack via its hotkey while looking straight ahead
+Sending direct works when the app filters its own signal on the device. The
+mod's smoothing is sized to take the edge off a clean signal rather than to
+rescue a noisy one, so a raw feed sent direct will jitter. If it does, point the
+app at OpenTrack's **UDP over network** *input* on some other port, say 5252,
+and let OpenTrack's filters and curves clean it up before its output forwards to
+`127.0.0.1:4242`.
 
-### Phone App Setup
+Anything arriving from outside `127.0.0.0/8` counts as a remote connection and
+is smoothed with `RemoteSmoothing` rather than `LocalSmoothing`. That includes a
+tracker on this very PC that sends to the machine's own LAN address, because the
+mod reads the source address and not the machine.
 
-This mod includes built-in smoothing to handle network jitter, so if your tracking app already provides a filtered signal, you can send directly from your phone to the mod on port 4242 without needing OpenTrack on PC.
+### Headset or other hardware
 
-1. Install an OpenTrack-compatible head tracking app from your phone's app store
-2. Configure your phone app to send to your PC's IP address on port 4242 (run `ipconfig` to find it, e.g. `192.168.1.100`)
-3. Set the protocol to OpenTrack/UDP
-4. Start tracking
+If your device has an OpenTrack input driver, select it under **Input** and use
+the same output settings. OpenTrack's own **Input** list is the authority on
+what it can read; the mod only ever sees what OpenTrack sends.
 
-**With OpenTrack (optional):** If you experience jerky motion, want curve mapping, or want a visual preview, route through OpenTrack instead. The mod already listens on port 4242, so OpenTrack's input must use a different port:
-1. In OpenTrack, set Input to **UDP over network** on port **5252** (or any port other than 4242)
-2. Set Output to **UDP over network** at `127.0.0.1:4242`
-3. In your phone app, send to your PC's IP on port **5252** (matching OpenTrack's input port)
-4. Make sure port 5252 is open in your PC's firewall for incoming UDP traffic
+### Centring
+
+Centring belongs to your tracker. The mod subtracts no centre of its own: it
+applies the pose it receives exactly as it arrives, so a stream of zeros holds
+the view where the game itself puts it. Press the centre control in your tracker
+(OpenTrack's **Center** bind, or the CENTER button in Headcam) and the tracker
+zeroes its own output, which leaves the view centred with the mod doing nothing.
+
+That is why there is no centre hotkey here and nothing to re-centre in game. Two
+centres in series would drift apart, because each side re-centres at moments the
+other cannot see, and you would end up pressing twice to centre once. If the
+view sits off to one side, centre it in the tracker.
 
 ## Controls
 
