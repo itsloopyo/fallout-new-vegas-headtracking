@@ -14,7 +14,7 @@ set "GAME_ID=fallout-new-vegas"
 set "MOD_DISPLAY_NAME=Fallout: NV Head Tracking"
 set "MOD_DLLS=HeadTracking.dll"
 set "MOD_INTERNAL_NAME=FalloutNVHeadTracking"
-set "MOD_VERSION=1.0.0"
+set "MOD_VERSION=0.2.0"
 set "STATE_FILE=.headtracking-state.json"
 set "FRAMEWORK_TYPE=xNVSE"
 :: xNVSE pin. Bump with `pixi run update-deps`, review the diff, commit.

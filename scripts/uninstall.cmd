@@ -21,11 +21,14 @@ set "FRAMEWORK_TYPE=xNVSE"
 :: DLL names shipped by older versions of this mod, removed too so an upgrade
 :: does not leave a second copy for the loader to bind.
 set "LEGACY_DLLS="
+:: Files install.cmd seeded write-if-absent. MUST list the same names as
+:: install.cmd's MOD_SEED_FILES, or an uninstall leaves the mod's config behind.
+set "MOD_SEED_FILES=HeadTracking.ini"
 :: BepInEx: subfolder under BepInEx\plugins\ the DLLs were deployed into.
 set "PLUGIN_SUBFOLDER="
 :: Config and log files the mod writes at runtime, removed from wherever the
 :: DLLs were deployed.
-set "MOD_LEFTOVERS=HeadTracking.ini"
+set "MOD_LEFTOVERS="
 :: Files to remove from the game root. Only needed by a mod deployed BELOW the
 :: root (see ASI_SUBDIR) that still resolves its config and log from the exe's
 :: own directory.
