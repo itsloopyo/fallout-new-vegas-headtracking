@@ -13,22 +13,20 @@ param([switch]$Restore)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-function Find-GamePath {
-    if ($env:FalloutNVPath -and (Test-Path "$env:FalloutNVPath\FalloutNV.exe")) {
-        return $env:FalloutNVPath
-    }
-    foreach ($p in @(
-        "C:\Program Files (x86)\Steam\steamapps\common\Fallout New Vegas",
-        "C:\Program Files\Steam\steamapps\common\Fallout New Vegas",
-        "D:\Steam\steamapps\common\Fallout New Vegas",
-        "D:\SteamLibrary\steamapps\common\Fallout New Vegas"
-    )) {
-        if (Test-Path "$p\FalloutNV.exe") { return $p }
-    }
-    throw "Fallout: New Vegas not found. Set `$env:FalloutNVPath."
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$projectRoot = Split-Path -Parent $scriptDir
+$modulePath = Join-Path $projectRoot "cameraunlock-core\powershell\GamePathDetection.psm1"
+Import-Module $modulePath -Force
+
+$gameId = 'fallout-new-vegas'
+$config = Get-GameConfig -GameId $gameId
+
+$gamePath = Find-GamePath -GameId $gameId
+if (-not $gamePath) {
+    Write-GameNotFoundError -GameName 'Fallout: New Vegas' -EnvVar $config.EnvVar -SteamFolder $config.SteamFolder
+    exit 1
 }
 
-$gamePath  = Find-GamePath
 $iniPath   = "$env:USERPROFILE\Documents\My Games\FalloutNV\Fallout.ini"
 $bikLive   = Join-Path $gamePath "Data\Video\FNVIntro.bik"
 $bikParked = Join-Path $gamePath "Data\Video\FNVIntro.bik.fastlaunch-disabled"

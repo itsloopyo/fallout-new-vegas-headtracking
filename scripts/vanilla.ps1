@@ -8,26 +8,17 @@ $ErrorActionPreference = "Stop"
 
 $StateFileName = ".headtracking-state.json"
 
-function Find-GamePath {
-    if ($env:FalloutNVPath -and (Test-Path "$env:FalloutNVPath\FalloutNV.exe")) {
-        return $env:FalloutNVPath
-    }
-    $steamPaths = @(
-        "C:\Program Files (x86)\Steam\steamapps\common\Fallout New Vegas",
-        "C:\Program Files\Steam\steamapps\common\Fallout New Vegas",
-        "D:\Steam\steamapps\common\Fallout New Vegas",
-        "D:\SteamLibrary\steamapps\common\Fallout New Vegas"
-    )
-    foreach ($path in $steamPaths) {
-        if (Test-Path "$path\FalloutNV.exe") { return $path }
-    }
-    return $null
-}
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$projectRoot = Split-Path -Parent $scriptDir
+$modulePath = Join-Path $projectRoot "cameraunlock-core\powershell\GamePathDetection.psm1"
+Import-Module $modulePath -Force
 
-$gamePath = Find-GamePath
+$gameId = 'fallout-new-vegas'
+$config = Get-GameConfig -GameId $gameId
+
+$gamePath = Find-GamePath -GameId $gameId
 if (-not $gamePath) {
-    Write-Host "ERROR: Fallout: New Vegas not found." -ForegroundColor Red
-    Write-Host 'Set $env:FalloutNVPath = "C:\Games\Fallout New Vegas"' -ForegroundColor Yellow
+    Write-GameNotFoundError -GameName 'Fallout: New Vegas' -EnvVar $config.EnvVar -SteamFolder $config.SteamFolder
     exit 1
 }
 
