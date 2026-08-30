@@ -52,6 +52,7 @@ if ($LASTEXITCODE -ne 0) {
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectDir = Split-Path -Parent $scriptDir
 $versionHeader = Join-Path $projectDir "src\version.h"
+$installCmdPath = Join-Path $projectDir "scripts\install.cmd"
 
 Import-Module (Join-Path $projectDir "cameraunlock-core\powershell\ReleaseWorkflow.psm1") -Force
 
@@ -220,6 +221,13 @@ if (-not $hasExistingTags) {
 Write-Host "Updating version to $Version..." -ForegroundColor Cyan
 Set-Version $Version
 
+# install.cmd's MOD_VERSION is what the install writes into the launcher's
+# state file, which is where the launcher looks to spot a stale install.
+$installCmdContent = Get-Content $installCmdPath -Raw
+if ($installCmdContent -notmatch 'set "MOD_VERSION=[^"]+"') { throw "MOD_VERSION line not found in $installCmdPath" }
+$installCmdContent = $installCmdContent -replace 'set "MOD_VERSION=[^"]+"', "set `"MOD_VERSION=$Version`""
+Set-Content $installCmdPath $installCmdContent -NoNewline
+
 # Step 3: Build and update prebuilt DLL
 Write-Host "Building release..." -ForegroundColor Cyan
 Push-Location $projectDir
@@ -241,6 +249,7 @@ Pop-Location
 # Step 4: Commit
 Write-Host "Committing changes..." -ForegroundColor Cyan
 git add $versionHeader
+git add $installCmdPath
 git add "$projectDir/prebuilt"
 git add $changelogPath
 git commit -m "Release v$Version"
