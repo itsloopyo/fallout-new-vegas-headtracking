@@ -333,7 +333,12 @@ void HeadTrackingPlugin::ApplyPositionSettings() {
     posSettings.sensitivity_y = 1.0f;
     posSettings.sensitivity_z = 1.0f;
     posSettings.limit_x = 0.30f;
+    // The clamp is [-limit_y_down, +limit_y] and limit_y_down carries its own
+    // default, so mirror the one configured vertical limit the way
+    // PositionSettings::Symmetric does. Left unset, raising LimitY widened the
+    // upward budget only and downward travel stayed pinned at 0.20m.
     posSettings.limit_y = 0.20f;
+    posSettings.limit_y_down = 0.20f;
     posSettings.limit_z = 0.10f;
     posSettings.limit_z_back = 0.40f;
     posSettings.invert_x = true;
