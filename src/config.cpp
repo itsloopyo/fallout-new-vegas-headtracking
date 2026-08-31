@@ -8,6 +8,7 @@
 #include "udp_receiver.h"
 
 #include <cameraunlock/logging/file_log.h>
+#include <cameraunlock/math/smoothing_utils.h>
 
 #include <cstdarg>
 #include <cstdio>
@@ -36,8 +37,8 @@ static void ConfigDiag(const char* level, const char* fmt, ...) {
 // Default values (match HeadTracking.ini defaults)
 constexpr uint16_t DEFAULT_UDP_PORT = 4242;
 constexpr double DEFAULT_SENSITIVITY = 1.0;
-constexpr double DEFAULT_LOCAL_SMOOTHING = 0.0;
-constexpr double DEFAULT_REMOTE_SMOOTHING = 0.15;
+constexpr double DEFAULT_LOCAL_SMOOTHING = cameraunlock::math::kDefaultLocalSmoothing;
+constexpr double DEFAULT_REMOTE_SMOOTHING = cameraunlock::math::kDefaultRemoteSmoothing;
 constexpr double DEFAULT_DEADZONE = 0.0;
 constexpr int DEFAULT_TOGGLE_KEY = 0x23;                // End
 constexpr int DEFAULT_CYCLE_TRACKING_MODE_KEY = 0x21;   // Page Up
