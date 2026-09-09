@@ -31,6 +31,9 @@ public:
     static HeadTrackingPlugin& Instance();
 
     bool Initialize(const NVSEInterface* nvse);
+
+    // Loader-independent initialization, used by the proxy deployment.
+    bool Initialize();
     void Shutdown();
     void Update();
     void OnGameLoaded();
@@ -49,6 +52,8 @@ private:
 
     // Check for config file changes and reload if needed
     void CheckConfigReload();
+    void ResetTracking();
+    bool m_waitingForPose = true;
 
     // Pushes the position limits, inversions and both smoothing values onto the
     // position processor. Called at init and again on every config reload, so

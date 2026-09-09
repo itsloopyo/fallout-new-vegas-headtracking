@@ -16,7 +16,6 @@ GameState::GameState()
     , m_pauseDuringCombat(false)
     , m_initialized(false)
     , m_cachedInterfaceMgr(nullptr)
-    , m_cachedCamera(nullptr)
     , m_cachedPlayer(nullptr) {
 }
 
@@ -41,7 +40,6 @@ void GameState::CacheSingletons() {
     // Cache all singleton pointers at the start of Update()
     // This avoids multiple pointer dereferences per frame
     m_cachedInterfaceMgr = InterfaceManager::GetSingleton();
-    m_cachedCamera = PlayerCamera::GetSingleton();
     m_cachedPlayer = PlayerCharacter::GetSingleton();
 }
 
@@ -89,21 +87,16 @@ void GameState::Update() {
         }
     }
 
-    // Always check movie (can play without menu mode)
-    if (CheckMoviePlaying()) {
-        newState = newState | GameStateFlags::InMovie;
-    }
-
     // Check gameplay states using cached player pointer
     if (CheckCombatStateCached()) {
         newState = newState | GameStateFlags::InCombat;
     }
 
     // Check camera mode using cached camera pointer
-    if (m_cachedCamera) {
-        if (m_cachedCamera->IsFirstPerson()) {
+    if (m_cachedPlayer) {
+        if (m_cachedPlayer->IsFirstPerson()) {
             newState = newState | GameStateFlags::IsFirstPerson;
-        } else if (m_cachedCamera->IsThirdPerson()) {
+        } else if (m_cachedPlayer->IsThirdPerson()) {
             newState = newState | GameStateFlags::IsThirdPerson;
         }
     }
@@ -114,7 +107,6 @@ void GameState::Update() {
 bool GameState::ShouldTrack() const {
     // Never track during loading screens or movies
     if (HasFlag(m_currentState, GameStateFlags::InLoading) ||
-        HasFlag(m_currentState, GameStateFlags::InMovie) ||
         HasFlag(m_currentState, GameStateFlags::InCharGen)) {
         return false;
     }
@@ -145,8 +137,7 @@ bool GameState::ShouldTrack() const {
 bool GameState::CanProcessInput() const {
     // Never process during loading or character generation
     if (HasFlag(m_currentState, GameStateFlags::InLoading) ||
-        HasFlag(m_currentState, GameStateFlags::InCharGen) ||
-        HasFlag(m_currentState, GameStateFlags::InMovie)) {
+        HasFlag(m_currentState, GameStateFlags::InCharGen)) {
         return false;
     }
 
@@ -193,15 +184,7 @@ bool GameState::IsMenuTypeOpenCached(uint32_t menuType) const {
     if (!m_cachedInterfaceMgr) {
         return false;
     }
-    return m_cachedInterfaceMgr->GetMenuByType(menuType) != nullptr;
-}
-
-bool GameState::CheckMoviePlaying() const {
-    BSWin32MoviePlayer* moviePlayer = BSWin32MoviePlayer::GetSingleton();
-    if (!moviePlayer) {
-        return false;
-    }
-    return moviePlayer->IsPlaying();
+    return m_cachedInterfaceMgr->IsMenuVisible(menuType);
 }
 
 bool GameState::CheckCombatStateCached() const {

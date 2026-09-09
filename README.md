@@ -2,43 +2,47 @@
 
 ![Fallout: New Vegas running with this mod](https://raw.githubusercontent.com/itsloopyo/fallout-new-vegas-headtracking/main/assets/readme-clip.gif)
 
-An unofficial head tracking mod for Fallout: New Vegas that moves the view with your head while your mouse or controller keeps aiming, driven by OpenTrack over UDP, with no VR headset required.
+An unofficial head tracking mod for Fallout: New Vegas that moves the view with your head while your mouse or controller keeps aiming, driven by a webcam, phone, or any OpenTrack compatible tracker, with no VR headset required.
 
 ## Features
 
 - **Decoupled look and aim** - head tracking moves the camera; aim stays on your mouse/controller
 - **6DOF positional tracking** - lean and peek with head position
+- **Works with any OpenTrack compatible tracker** - free options available for PC, iOS and Android
 
 ## Requirements
 
-- [Fallout: New Vegas](https://store.steampowered.com/app/22380/Fallout_New_Vegas/) (Steam or GOG)
-- [xNVSE](https://github.com/xNVSE/NVSE) 6.4.1 or newer (auto-installed if missing)
-- [OpenTrack](https://github.com/opentrack/opentrack) or a compatible head tracking app (smartphone, webcam, or dedicated hardware)
-- Windows (x86)
+- Fallout: New Vegas for Windows. Supported executable profiles: Steam
+  (2011-07-01) and Game Pass English (2016-01-21).
+- A tracker sending OpenTrack UDP pose data.
 
-[NVTF (New Vegas Tick Fix)](https://www.nexusmods.com/newvegas/mods/66537) is strongly recommended for smooth camera movement.
+Other executable fingerprints are left untouched and identified in the log.
+This mod loads through `dsound.dll` and does not require xNVSE.
 
 ## Installation
 
-1. Download the latest release from the [Releases page](https://github.com/itsloopyo/fallout-new-vegas-headtracking/releases)
-2. Extract the ZIP anywhere
-3. Double-click `install.cmd`
-4. Configure OpenTrack to output UDP to `127.0.0.1:4242`
-5. Launch the game via `nvse_loader.exe`
+Install or update the package through [Lopari](https://lopari.app), then launch
+from Steam or the Xbox app as usual. Existing root-level configuration is preserved.
 
-The installer automatically finds your game by checking the Windows registry for your Steam/GOG installation. If xNVSE is not already present, `install.cmd` downloads a pinned version from the official [xNVSE GitHub release](https://github.com/xNVSE/NVSE/releases) and verifies its SHA-256 before installing it. xNVSE has no redistributable license, so it is fetched at install time rather than bundled in the release ZIP; an existing xNVSE install is detected and left untouched.
+### Manual installation
 
-If it can't find the game, either:
-- Set the `FalloutNVPath` environment variable to your game folder
-- Run from command prompt: `install.cmd "D:\Games\Fallout New Vegas"`
+Use the `-installer.zip` from the release:
 
-### Manual Installation
+1. Copy `plugins/HeadTracking.dll` next to `FalloutNV.exe`, renaming it to
+   `dsound.dll`. Keep a backup if another mod already owns that filename.
+2. Copy `plugins/HeadTracking.ini` to the same directory if you do not already
+   have a `HeadTracking.ini` there.
+3. For an upgrade from the NVSE version, copy your old
+   `Data/NVSE/Plugins/HeadTracking.ini` to the game root to retain your settings,
+   then remove the old `Data/NVSE/Plugins/HeadTracking.dll`.
+4. Configure your tracker for UDP port `4242` and launch the game normally.
 
-If you prefer to place files by hand, or you are extracting the Nexus ZIP (which contains only the mod files):
+The launcher package also updates the legacy NVSE DLL path with a compatibility
+copy. That copy stays dormant when the root proxy is loaded, preventing two
+versions from changing the camera at once.
 
-1. Install [xNVSE](https://github.com/xNVSE/NVSE/releases) by extracting its archive into your game folder (next to `FalloutNV.exe`).
-2. Copy the mod DLL (`HeadTracking.dll`) and `HeadTracking.ini` into `Data/NVSE/Plugins/` inside your game folder. Create the folder if it does not exist.
-3. Launch the game via `nvse_loader.exe`.
+A manager that deploys only into `Data` cannot install this proxy: `dsound.dll`
+must be beside the executable. This release has no Data-only Nexus archive.
 
 ## Setting Up OpenTrack
 
@@ -103,158 +107,81 @@ view sits off to one side, centre it in the tracker.
 
 ## Controls
 
-Two equivalent binding sets - use whichever your keyboard has:
+| Action | Nav-cluster | Chord |
+|--------|-------------|-------|
+| Toggle tracking | `End` | `Ctrl+Shift+Y` |
+| Cycle rotation and position | `Page Up` | `Ctrl+Shift+G` |
+| Toggle hip-fire reticle | `Page Down` | `Ctrl+Shift+H` |
+| Cycle ADS mode | `Insert` | `Ctrl+Shift+U` |
+| Toggle yaw mode | `Delete` | `Ctrl+Shift+J` |
 
-| Action              | Nav-cluster | Chord           |
-|---------------------|-------------|-----------------|
-| Toggle tracking     | `End`       | `Ctrl+Shift+Y`  |
-| Cycle tracking mode | `Page Up`   | `Ctrl+Shift+G`  |
-| Toggle reticle      | `Page Down` | `Ctrl+Shift+H`  |
-| Toggle yaw mode     | `Insert`    | `Ctrl+Shift+U`  |
+Page Up cycles full tracking, rotation only, then position only. Delete switches
+between horizon-locked yaw and camera-local yaw. Existing `YawModeKey=0x2D`
+settings move to Delete because Insert now owns ADS.
 
-The yaw-mode toggle uses `Insert` / `Ctrl+Shift+U` rather than the catalogue-standard
-`Page Down` / `Ctrl+Shift+H`, because those are already the reticle toggle in this mod.
-The nav-cluster key is configurable via `YawModeKey` in `HeadTracking.ini`.
+`Insert` / `Ctrl+Shift+U` cycles what happens when you aim down sights. All
+three ease the view onto the sight line when you raise the weapon:
 
-`Page Up` / `Ctrl+Shift+G` cycles tracking mode:
+1. **Tracking paused** (default): yaw, pitch and leaning fade out while aiming.
+2. **Tracking on, with an aim marker**: tracking continues relative to your
+   head pose at ADS entry. A small white crosshair marks the projected clean
+   aim point. Use this marker when head movement separates it from an optic's
+   built-in reticle.
+3. **Tracking on, no aim marker**: the same relative tracking without the marker.
 
-1. Normal head-tracked gameplay
-2. Positional tracking disabled, rotational tracking enabled
-3. Rotational tracking disabled, positional tracking enabled
-4. Back to normal
+The first-person weapon moves with the view so it stays pointed along your
+mouse/controller aim. Leaning moves your eye away from the iron sights.
+
+Roll remains absolute in all three modes. Entry takes 150 ms; lowering the
+weapon blends back to normal tracking over 250 ms. The choice is saved in
+`[Camera] ads_mode`. The selected mode is named in `HeadTracking.log`.
 
 ## Configuration
 
-The plugin is configured via `HeadTracking.ini` in `Data/NVSE/Plugins/`. A default config is created on first run. The mod auto-reloads the config file when changes are detected.
+`HeadTracking.ini` lives next to `FalloutNV.exe`. Changes are reloaded while
+running. See [the default configuration](config/HeadTracking.ini) for all keys.
 
-```ini
-[Network]
-; UDP port for OpenTrack data (default: 4242)
-Port=4242
-
-[Sensitivity]
-; Multipliers for each axis (0.1-5.0)
-Yaw=1.0
-Pitch=1.0
-Roll=1.0
-
-[Smoothing]
-; Smoothing applied when the tracker runs on this machine (loopback).
-; 0 = no smoothing, 1 = heavy. Covers rotation and position.
-LocalSmoothing=0.0
-; Smoothing applied when the tracker is a remote device on the network.
-; 0 = no smoothing, 1 = heavy. Covers rotation and position.
-RemoteSmoothing=0.15
-
-[Deadzone]
-; Deadzone thresholds in degrees (0.0-30.0)
-Yaw=0.0
-Pitch=0.0
-Roll=0.0
-
-[Hotkeys]
-; Nav-cluster virtual key codes (hex). Each action also accepts a fixed
-; Ctrl+Shift+<letter> chord (Y/G/H/U) which is not configurable.
-; End=0x23, PageUp=0x21, PageDown=0x22, Insert=0x2D
-Toggle=0x23
-CycleTrackingMode=0x21
-ReticleToggle=0x22
-; Insert (Page Down is taken by ReticleToggle in this mod)
-YawModeKey=0x2D
-DebounceMs=200
-
-[Camera]
-; Mode: 0=Coupled (affects aim), 1=Decoupled (free-look), 2=BodyTracking
-Mode=1
-; WorldSpaceYaw: 1 = horizon-locked yaw (default), 0 = camera-local
-WorldSpaceYaw=1
-
-[GameState]
-; InputBlockMode: 0=Never, 1=MenusOnly, 2=AllDialogue, 3=AllOverlays
-InputBlockMode=0
-TrackInThirdPerson=1
-TrackInVATS=0
-PauseDuringCombat=0
-
-[Feedback]
-ShowMessages=1
-```
+`LocalSmoothing=0.0` and `RemoteSmoothing=0.15` under `[Smoothing]` select
+smoothing by connection source. Both cover rotation and position; zero disables
+smoothing. Configure sensitivity, deadzones, inversion and centring in your
+tracker. Old `[Sensitivity]`, `[Deadzone]` and `[Camera] Mode` entries are ignored.
+Head tracking changes the rendered view without writing player aim.
 
 ## Troubleshooting
 
-**Plugin not loading:**
-- Verify xNVSE is installed correctly (`nvse_loader.exe` exists in game folder)
-- Launch via `nvse_loader.exe`, **not** `FalloutNV.exe` directly
-- Check `Data/NVSE/Plugins/HeadTracking.log` for errors. It is rewritten on
-  every launch and the previous run is kept as `HeadTracking.prev.log`, so
-  send both when reporting a problem.
+Check `HeadTracking.log` beside the game executable. The previous launch is
+kept as `HeadTracking.prev.log`. A supported profile, render-hook initialization,
+and the first received UDP packet are logged separately.
 
-**No tracking response:**
-- Check `Data/NVSE/Plugins/HeadTracking.log` for the `UDP: First UDP packet
-  received` line. Without it nothing is reaching the game
-- Verify OpenTrack is running and tracking is active
-- Check that OpenTrack output is set to UDP `127.0.0.1:4242`
-- Press **End** to make sure tracking is enabled
-- Ensure no firewall is blocking UDP port 4242
+If tracking does not respond, check the logged error, the tracker output port,
+and whether another game is already using that port. Press End to enable
+tracking. For an unsupported build, include the fingerprint line in a bug report.
 
-**Camera stutters or jumps:**
-- Install [NVTF (New Vegas Tick Fix)](https://www.nexusmods.com/newvegas/mods/66537)
-- Increase the smoothing value your tracker uses in `HeadTracking.ini`:
-  `RemoteSmoothing` for a phone or another device on the network,
-  `LocalSmoothing` for a tracker running on this PC
-- Add small deadzones to filter tracker noise
+If the view needs centring, use the centre control in your tracker. If yaw feels
+awkward at steep viewing angles, try Delete to switch yaw mode.
 
-**View rotates the wrong way:**
-- Set the appropriate invert option in OpenTrack's output mapping, or adjust the axis curves
-- Confirm OpenTrack's output axes match your tracker orientation
-- Centre the view in your tracker app while looking straight ahead
+## Updating and removing
 
-**Yaw feels wrong when looking up or down at extreme angles:**
-- Try toggling between world-locked and camera-local yaw with **Insert** (or `Ctrl+Shift+U`). World-locked (default) is horizon-stable; camera-local follows the camera's current up-axis.
+Use Lopari to update or remove its installed package. For a manual install,
+replace the DLL to update; remove this mod's `dsound.dll` to uninstall and restore
+any DLL you backed up. Retain your INI for later use. Remove the compatibility
+`Data/NVSE/Plugins/HeadTracking.dll` too if present. Other mods may still need xNVSE.
 
-## Known Limitations
+## Building from source
 
-**Sky drifts slightly with positional (6DOF) leaning:** the sky is rendered as
-a backdrop centered on the un-offset camera eye, so leaning your head shifts the
-view relative to it and the sky appears to slide a little. Rotational tracking is
-unaffected. The effect scales with positional movement; lowering position
-sensitivity reduces it.
-
-## Updating
-
-Download the new release and run `install.cmd` again. Your config is preserved.
-
-## Uninstalling
-
-Run `uninstall.cmd` from the release folder. This removes the mod DLL and INI. xNVSE is only removed if the installer put it there; it is left intact otherwise since other mods may depend on it. To force-remove xNVSE as well:
+Requires Windows, Visual Studio with the C++ desktop workload, and pixi.
+The x86 build uses checked-in source and the cameraunlock-core submodule;
+no game files are build references.
 
 ```powershell
-uninstall.cmd /force
-```
-
-## Building from Source
-
-### Prerequisites
-
-- Visual Studio 2019 or newer (with C++ desktop workload)
-- CMake 3.20 or newer
-- [pixi](https://pixi.sh) task runner
-
-### Build
-
-```bash
 git clone --recurse-submodules https://github.com/itsloopyo/fallout-new-vegas-headtracking.git
 cd fallout-new-vegas-headtracking
-
-# Build and install to game directory
-pixi run install
-
-# Or just build
-pixi run build-release
-
-# Package for release
 pixi run package
 ```
+
+`pixi run package` configures, builds, runs the tests and writes the installer ZIP
+under `release/`. `pixi run install` is a developer task that deploys the build
+to detected local game installations.
 
 ## Community & Support
 
@@ -266,10 +193,7 @@ pixi run package
 
 MIT. See [LICENSE](LICENSE).
 
-Third-party components, and the reasons xNVSE is downloaded at install time
-rather than bundled, are recorded in
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). This mod redistributes no
-Fallout: New Vegas code or assets and no xNVSE binary.
+Third-party notices ship in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## Credits
 

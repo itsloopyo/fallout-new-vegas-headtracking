@@ -6,7 +6,6 @@
 
 // Forward declarations (global namespace - defined in nvse_abi/GameAPI.h)
 class InterfaceManager;
-class PlayerCamera;
 class PlayerCharacter;
 
 namespace HeadTracking {
@@ -97,7 +96,6 @@ private:
     // Check specific game states using cached pointers
     bool CheckMenuModeCached() const;
     bool CheckConsoleOpenCached() const;
-    bool CheckMoviePlaying() const;
     bool CheckCombatStateCached() const;
 
     // Cache singleton pointers at start of Update() to avoid multiple lookups
@@ -121,7 +119,6 @@ private:
     // Performance optimization: cached singleton pointers per-frame
     // These are refreshed at the start of each Update() call
     ::InterfaceManager* m_cachedInterfaceMgr;
-    ::PlayerCamera* m_cachedCamera;
     ::PlayerCharacter* m_cachedPlayer;
 };
 

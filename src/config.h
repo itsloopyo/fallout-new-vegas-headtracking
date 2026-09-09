@@ -47,14 +47,10 @@ public:
     bool ApplyToComponents(CameraController* camera, HotkeyHandler* hotkey,
                            GameState* gameState, UdpReceiver* udpReceiver);
 
+    void SetAdsMode(cameraunlock::ads::AdsMode mode);
+
     // Network settings
     uint16_t GetUdpPort() const { return m_udpPort; }
-
-    // Sensitivity settings (multipliers)
-    SensitivitySettings GetSensitivity() const;
-
-    // Deadzone settings (degrees)
-    DeadzoneSettings GetDeadzone() const;
 
     // Smoothing, chosen per connection: local for a tracker on this machine,
     // remote for a device sending over the network. Both cover rotation and
@@ -81,19 +77,9 @@ private:
     // Network settings
     uint16_t m_udpPort;
 
-    // Sensitivity settings (multipliers)
-    double m_sensitivityYaw;
-    double m_sensitivityPitch;
-    double m_sensitivityRoll;
-
     // Smoothing factors (local / remote connection)
     double m_localSmoothing;
     double m_remoteSmoothing;
-
-    // Deadzone settings (degrees)
-    double m_deadzoneYaw;
-    double m_deadzonePitch;
-    double m_deadzoneRoll;
 
     // Hotkey settings
     int m_toggleKey;
@@ -111,11 +97,10 @@ private:
     // Feedback settings
     bool m_showMessages;
 
-    // Camera mode (coupled or decoupled/free-look)
-    CameraMode m_cameraMode;
-
     // Yaw mode: true = world-space (horizon-locked, default), false = camera-local
     bool m_worldSpaceYaw;
+    std::string m_adsModeKey = "ads_mode";
+    cameraunlock::ads::AdsMode m_adsMode = cameraunlock::ads::kDefaultAdsMode;
 };
 
 }  // namespace HeadTracking

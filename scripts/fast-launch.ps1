@@ -17,20 +17,14 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Split-Path -Parent $scriptDir
 $modulePath = Join-Path $projectRoot "cameraunlock-core\powershell\GamePathDetection.psm1"
 Import-Module $modulePath -Force
+Import-Module (Join-Path $scriptDir "FnvInstalls.psm1") -Force
 
-$gameId = 'fallout-new-vegas'
-$config = Get-GameConfig -GameId $gameId
+$gamePaths = Get-FnvInstalls
 
-$gamePath = Find-GamePath -GameId $gameId
-if (-not $gamePath) {
-    Write-GameNotFoundError -GameName 'Fallout: New Vegas' -EnvVar $config.EnvVar -SteamFolder $config.SteamFolder
-    exit 1
-}
-
-$iniPath   = "$env:USERPROFILE\Documents\My Games\FalloutNV\Fallout.ini"
-$bikLive   = Join-Path $gamePath "Data\Video\FNVIntro.bik"
-$bikParked = Join-Path $gamePath "Data\Video\FNVIntro.bik.fastlaunch-disabled"
-$stateFile = Join-Path $gamePath ".fast-launch-state.json"
+# One Fallout.ini per user whatever the install count, so sIntroMovie is
+# handled once outside the loop. FNVIntro.bik lives in the game folder and is
+# handled per install.
+$iniPath = "$env:USERPROFILE\Documents\My Games\FalloutNV\Fallout.ini"
 
 if (-not (Test-Path $iniPath)) {
     throw "Fallout.ini not found at $iniPath. Launch the game once to generate it."
@@ -66,40 +60,50 @@ function Get-IniKey([string]$path, [string]$key) {
 if ($Restore) {
     Write-Host "Restoring vanilla launch sequence..." -ForegroundColor Cyan
 
-    if (-not (Test-Path $stateFile)) {
-        throw "No state file at $stateFile - nothing to restore. (Were fast-launch tweaks ever applied?)"
+    $states = @($gamePaths | ForEach-Object { Join-Path $_ ".fast-launch-state.json" } | Where-Object { Test-Path $_ })
+    if ($states.Count -eq 0) {
+        throw "No .fast-launch-state.json under any install - nothing to restore. (Were fast-launch tweaks ever applied?)"
     }
-    $state = Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json
 
+    # Every state file records the same original value, so the first one that
+    # exists settles the shared ini.
+    $state = Get-Content -LiteralPath $states[0] -Raw | ConvertFrom-Json
     Set-IniKey $iniPath 'sIntroMovie' $state.sIntroMovie
     Write-Host "  Fallout.ini  sIntroMovie restored to '$($state.sIntroMovie)'" -ForegroundColor Green
 
-    if (Test-Path $bikParked) {
-        if (Test-Path $bikLive) {
-            throw "Both $bikLive and $bikParked exist - resolve manually before restoring."
+    foreach ($gamePath in $gamePaths) {
+        Write-Host ""
+        Write-Host "Game path: $gamePath" -ForegroundColor Cyan
+
+        $bikLive   = Join-Path $gamePath "Data\Video\FNVIntro.bik"
+        $bikParked = Join-Path $gamePath "Data\Video\FNVIntro.bik.fastlaunch-disabled"
+        $stateFile = Join-Path $gamePath ".fast-launch-state.json"
+
+        if (Test-Path $bikParked) {
+            if (Test-Path $bikLive) {
+                throw "Both $bikLive and $bikParked exist - resolve manually before restoring."
+            }
+            Rename-Item -LiteralPath $bikParked -NewName "FNVIntro.bik"
+            Write-Host "  Video        FNVIntro.bik renamed back" -ForegroundColor Green
+        } else {
+            Write-Host "  Video        FNVIntro.bik already in place" -ForegroundColor Gray
         }
-        Rename-Item -LiteralPath $bikParked -NewName "FNVIntro.bik"
-        Write-Host "  Video        FNVIntro.bik renamed back" -ForegroundColor Green
-    } else {
-        Write-Host "  Video        FNVIntro.bik already in place" -ForegroundColor Gray
+
+        if (Test-Path $stateFile) { Remove-Item -LiteralPath $stateFile -Force }
     }
 
-    Remove-Item -LiteralPath $stateFile -Force
+    Write-Host ""
     Write-Host "Done. Game will play its full intro sequence again." -ForegroundColor Cyan
     return
 }
 
 Write-Host "Applying fast-launch tweaks..." -ForegroundColor Cyan
-Write-Host "  Game path: $gamePath" -ForegroundColor Gray
 
-$existing = if (Test-Path $stateFile) { Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json } else { $null }
-
-$origIntroMovie = if ($existing) { $existing.sIntroMovie } else { Get-IniKey $iniPath 'sIntroMovie' }
-$state = [pscustomobject]@{
-    sIntroMovie = $origIntroMovie
-    appliedAt   = (Get-Date).ToString('o')
-}
-$state | ConvertTo-Json | Set-Content -LiteralPath $stateFile -Encoding UTF8
+# Read the recorded original before blanking the key, so a re-run does not
+# record the blank as the value to restore.
+$existingState = @($gamePaths | ForEach-Object { Join-Path $_ ".fast-launch-state.json" } | Where-Object { Test-Path $_ } |
+    ForEach-Object { Get-Content -LiteralPath $_ -Raw | ConvertFrom-Json })
+$origIntroMovie = if ($existingState.Count -gt 0) { $existingState[0].sIntroMovie } else { Get-IniKey $iniPath 'sIntroMovie' }
 
 $currentIntroMovie = Get-IniKey $iniPath 'sIntroMovie'
 if ([string]::IsNullOrEmpty($currentIntroMovie)) {
@@ -109,16 +113,30 @@ if ([string]::IsNullOrEmpty($currentIntroMovie)) {
     Write-Host "  Fallout.ini  sIntroMovie cleared (was '$currentIntroMovie')" -ForegroundColor Green
 }
 
-if (Test-Path $bikLive) {
-    if (Test-Path $bikParked) {
-        throw "Both $bikLive and $bikParked exist - resolve manually before applying."
+foreach ($gamePath in $gamePaths) {
+    Write-Host ""
+    Write-Host "Game path: $gamePath" -ForegroundColor Cyan
+
+    $bikLive   = Join-Path $gamePath "Data\Video\FNVIntro.bik"
+    $bikParked = Join-Path $gamePath "Data\Video\FNVIntro.bik.fastlaunch-disabled"
+    $stateFile = Join-Path $gamePath ".fast-launch-state.json"
+
+    [pscustomobject]@{
+        sIntroMovie = $origIntroMovie
+        appliedAt   = (Get-Date).ToString('o')
+    } | ConvertTo-Json | Set-Content -LiteralPath $stateFile -Encoding UTF8
+
+    if (Test-Path $bikLive) {
+        if (Test-Path $bikParked) {
+            throw "Both $bikLive and $bikParked exist - resolve manually before applying."
+        }
+        Rename-Item -LiteralPath $bikLive -NewName "FNVIntro.bik.fastlaunch-disabled"
+        Write-Host "  Video        FNVIntro.bik parked" -ForegroundColor Green
+    } elseif (Test-Path $bikParked) {
+        Write-Host "  Video        FNVIntro.bik already parked" -ForegroundColor Gray
+    } else {
+        Write-Host "  Video        FNVIntro.bik not present (DLC-less or pre-stripped install)" -ForegroundColor Yellow
     }
-    Rename-Item -LiteralPath $bikLive -NewName "FNVIntro.bik.fastlaunch-disabled"
-    Write-Host "  Video        FNVIntro.bik parked" -ForegroundColor Green
-} elseif (Test-Path $bikParked) {
-    Write-Host "  Video        FNVIntro.bik already parked" -ForegroundColor Gray
-} else {
-    Write-Host "  Video        FNVIntro.bik not present (DLC-less or pre-stripped install)" -ForegroundColor Yellow
 }
 
 Write-Host ""

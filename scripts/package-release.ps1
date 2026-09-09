@@ -1,211 +1,43 @@
-#!/usr/bin/env pwsh
 #Requires -Version 5.1
+# The proxy must land beside FalloutNV.exe. A Data-only mod-manager archive
+# cannot load it, so this package produces an installer ZIP only.
 Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
-$ProgressPreference = 'SilentlyContinue'
-
-<#
-.SYNOPSIS
-    Creates a release ZIP archive for distribution.
-
-.DESCRIPTION
-    This script reads the version from version.h and produces both
-    distribution ZIPs in release/. xNVSE has no upstream license, so it is
-    NOT bundled - install.cmd downloads it from the pinned URL at install
-    time (see scripts/install.cmd CONFIG BLOCK and vendor/xnvse/README.md).
-
-    Installer ZIP (FalloutNVHeadTracking-v<version>-installer.zip):
-    - launcher-manifest.json (root, version-stamped - the lopari contract)
-    - install.cmd, uninstall.cmd (root)
-    - plugins/HeadTracking.dll, plugins/HeadTracking.ini
-    - shared/ (find-game.ps1 + games.json detection bundle)
-    - README.md, CHANGELOG.md, LICENSE, THIRD-PARTY-NOTICES.md
-
-    Nexus ZIP (FalloutNVHeadTracking-v<version>-nexus.zip):
-    - Data/NVSE/Plugins/HeadTracking.dll + HeadTracking.ini only
-      (no loader, no scripts, no docs)
-
-.NOTES
-    Run via: pixi run package
-#>
-
-function Get-VersionFromHeader {
-    $versionHeader = "src/version.h"
-    if (-not (Test-Path $versionHeader)) {
-        Write-Host "ERROR: version.h not found" -ForegroundColor Red
-        exit 1
-    }
-
-    $content = Get-Content $versionHeader -Raw
-
-    $major = [regex]::Match($content, 'VERSION_MAJOR\s*=\s*(\d+)').Groups[1].Value
-    $minor = [regex]::Match($content, 'VERSION_MINOR\s*=\s*(\d+)').Groups[1].Value
-    $patch = [regex]::Match($content, 'VERSION_PATCH\s*=\s*(\d+)').Groups[1].Value
-
-    if (-not $major -or -not $minor -or -not $patch) {
-        Write-Host "ERROR: Could not parse version from version.h" -ForegroundColor Red
-        exit 1
-    }
-
-    return "$major.$minor.$patch"
+$ErrorActionPreference = 'Stop'
+$projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$releaseDir = Join-Path $projectRoot 'release'
+$header = Get-Content (Join-Path $projectRoot 'src/version.h') -Raw
+$parts = foreach ($part in @('MAJOR', 'MINOR', 'PATCH')) {
+    $match = [regex]::Match($header, "VERSION_$part\s*=\s*(\d+)")
+    if (-not $match.Success) { throw "Missing VERSION_$part in version.h" }
+    $match.Groups[1].Value
 }
-
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$projectRoot = Split-Path -Parent $scriptDir
-$releaseDir = Join-Path $projectRoot "release"
-
-Import-Module (Join-Path $projectRoot "cameraunlock-core\powershell\ReleaseWorkflow.psm1") -Force
-
-Write-Host "=== FalloutNVHeadTracking - Package Release ===" -ForegroundColor Magenta
-Write-Host ""
-
-# Get version
-$version = Get-VersionFromHeader
-Write-Host "Version: $version" -ForegroundColor Cyan
-Write-Host ""
-
-# Verify build output exists
-$dllPath = "build/bin/Release/HeadTracking.dll"
-if (-not (Test-Path $dllPath)) {
-    Write-Host "ERROR: Build output not found at: $dllPath" -ForegroundColor Red
-    Write-Host "Run 'pixi run build-release' first." -ForegroundColor Yellow
-    exit 1
-}
-
-$iniPath = "config/HeadTracking.ini"
-if (-not (Test-Path $iniPath)) {
-    Write-Host "ERROR: Config not found: $iniPath" -ForegroundColor Red
-    exit 1
-}
-
-# Create release directory
-if (-not (Test-Path $releaseDir)) {
-    New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
-}
-
-# Create staging directory
-$stagingDir = Join-Path $releaseDir "staging"
-if (Test-Path $stagingDir) {
-    Remove-Item -Recurse -Force $stagingDir
-}
-New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
-
-Write-Host "Staging release files..." -ForegroundColor Cyan
-
-# Copy install/uninstall scripts to root
-foreach ($script in @("install.cmd", "uninstall.cmd")) {
-    $scriptPath = Join-Path $scriptDir $script
-    if (-not (Test-Path $scriptPath)) {
-        Write-Host "ERROR: $script not found at $scriptPath" -ForegroundColor Red
-        exit 1
-    }
-    Copy-Item $scriptPath -Destination $stagingDir -Force
-    Write-Host "  $script" -ForegroundColor Green
-}
-
-# Copy mod files to plugins subfolder
-$pluginsDestDir = Join-Path $stagingDir "plugins"
-New-Item -ItemType Directory -Path $pluginsDestDir -Force | Out-Null
-
-Copy-Item $dllPath -Destination $pluginsDestDir -Force
-Write-Host "  plugins/HeadTracking.dll" -ForegroundColor Green
-
-Copy-Item $iniPath -Destination $pluginsDestDir -Force
-Write-Host "  plugins/HeadTracking.ini" -ForegroundColor Green
-
-# xNVSE is NOT bundled (no upstream license to redistribute). install.cmd
-# downloads it from the pinned URL and verifies the SHA-256 at install time.
-
-# Stamp the launcher manifest with the real release version and place it at the
-# installer ZIP root. The launcher reads this file (delivery_mode is install_cmd,
-# so install.cmd still drives the actual install - the manifest is the metadata
-# lopari ingests for detection, audit, and future native deployment).
-$manifestSrc = Join-Path $projectRoot "launcher-manifest.json"
-if (-not (Test-Path $manifestSrc)) {
-    Write-Host "ERROR: launcher-manifest.json not found at $manifestSrc" -ForegroundColor Red
-    exit 1
-}
-$manifest = Get-Content $manifestSrc -Raw | ConvertFrom-Json
+$version = $parts -join '.'
+$stagingDir = Join-Path $releaseDir ('staging-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path (Join-Path $stagingDir 'plugins') -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $projectRoot 'build/bin/Release/HeadTracking.dll') -Destination (Join-Path $stagingDir 'plugins')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'config/HeadTracking.ini') -Destination (Join-Path $stagingDir 'plugins')
+$manifest = Get-Content (Join-Path $projectRoot 'launcher-manifest.json') -Raw | ConvertFrom-Json
 $manifest.mod_info.version = $version
-$manifestDest = Join-Path $stagingDir "launcher-manifest.json"
-$manifest | ConvertTo-Json -Depth 10 | Set-Content -Path $manifestDest -Encoding utf8
-Write-Host "  launcher-manifest.json (version $version)" -ForegroundColor Green
-
-# Bundle the shared detection bundle (find-game.ps1 + games.json) for install.cmd's shim.
-Copy-SharedBundle -StagingDir $stagingDir -CoreRoot (Join-Path $projectRoot 'cameraunlock-core')
-
-# Copy documentation. Every ZIP we publish is a binary distribution, so the
-# licences of everything compiled into the payload require their notices to
-# travel with it. A missing one is a compliance failure, not a file to skip.
-$docFiles = @("README.md", "CHANGELOG.md", "LICENSE", "THIRD-PARTY-NOTICES.md")
-foreach ($doc in $docFiles) {
-    $docPath = Join-Path $projectRoot $doc
-    if (-not (Test-Path $docPath)) {
-        throw "Required notice file not found: $doc. Every published ZIP is a binary distribution and must carry it."
+$seed = [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $projectRoot 'config/HeadTracking.ini')))
+$manifest.loader.seed[0].content_b64 = $seed
+foreach ($file in $manifest.files) {
+    if (-not (Test-Path -LiteralPath (Join-Path $stagingDir $file.source) -PathType Leaf)) {
+        throw "Manifest source missing: $($file.source)"
     }
-    Copy-Item $docPath -Destination $stagingDir -Force
-    Write-Host "  $doc" -ForegroundColor Green
-}
-
-Write-Host ""
-
-# Installer ZIP (GitHub Releases): scripts + plugins + shared shim + docs.
-$installerZip = Join-Path $releaseDir "FalloutNVHeadTracking-v$version-installer.zip"
-if (Test-Path $installerZip) {
-    Remove-Item $installerZip -Force
-}
-
-Write-Host "Creating installer ZIP..." -ForegroundColor Cyan
-Push-Location $stagingDir
-try {
-    Compress-Archive -Path ".\*" -DestinationPath $installerZip -Force
-} finally {
-    Pop-Location
-}
-Remove-Item -Recurse -Force $stagingDir
-
-# Nexus ZIP (extract-to-game-folder): only the deploy subtree, no loader,
-# no scripts, no docs. Users on Nexus manage their own xNVSE.
-$nexusStaging = Join-Path $releaseDir "staging-nexus"
-if (Test-Path $nexusStaging) {
-    Remove-Item -Recurse -Force $nexusStaging
-}
-$nexusPluginsDir = Join-Path $nexusStaging "Data\NVSE\Plugins"
-New-Item -ItemType Directory -Path $nexusPluginsDir -Force | Out-Null
-Copy-Item $dllPath -Destination $nexusPluginsDir -Force
-Copy-Item $iniPath -Destination $nexusPluginsDir -Force
-
-$nexusZip = Join-Path $releaseDir "FalloutNVHeadTracking-v$version-nexus.zip"
-if (Test-Path $nexusZip) {
-    Remove-Item $nexusZip -Force
-}
-
-Write-Host "Creating nexus ZIP..." -ForegroundColor Cyan
-# The Nexus ZIP is a binary distribution too, so it carries the same notices.
-foreach ($noticeDoc in @('LICENSE', 'THIRD-PARTY-NOTICES.md', 'README.md')) {
-    $noticeSrc = Join-Path $projectRoot $noticeDoc
-    if (-not (Test-Path $noticeSrc)) {
-        throw "Required notice file not found: $noticeDoc. Every published ZIP is a binary distribution and must carry it."
+    if ([IO.Path]::IsPathRooted($file.target) -or $file.target -match '(^|[/\\])\.\.([/\\]|$)') {
+        throw "Invalid manifest target: $($file.target)"
     }
-    Copy-Item $noticeSrc -Destination $nexusStaging -Force
-    Write-Host "  $noticeDoc" -ForegroundColor Green
 }
-Push-Location $nexusStaging
-try {
-    Compress-Archive -Path ".\*" -DestinationPath $nexusZip -Force
-} finally {
-    Pop-Location
+$manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $stagingDir 'launcher-manifest.json') -Encoding UTF8
+foreach ($doc in @('README.md', 'CHANGELOG.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md')) {
+    Copy-Item -LiteralPath (Join-Path $projectRoot $doc) -Destination $stagingDir
 }
-Remove-Item -Recurse -Force $nexusStaging
-
-Write-Host ""
-Write-Host "=== Package Complete ===" -ForegroundColor Magenta
-Write-Host ""
-foreach ($z in @($installerZip, $nexusZip)) {
-    $kb = (Get-Item $z).Length / 1KB
-    Write-Host ("  {0}  ({1:N1} KB)" -f $z, $kb) -ForegroundColor Green
+$zip = Join-Path $releaseDir "FalloutNVHeadTracking-v$version-installer.zip"
+Compress-Archive -Path (Join-Path $stagingDir '*') -DestinationPath $zip -Force
+$resolvedStaging = (Resolve-Path -LiteralPath $stagingDir).Path
+$resolvedRelease = (Resolve-Path -LiteralPath $releaseDir).Path
+if (-not $resolvedStaging.StartsWith($resolvedRelease + '\', [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Staging path escaped release directory: $resolvedStaging"
 }
-
-# Output zip paths for CI capture
-Write-Output $installerZip
-Write-Output $nexusZip
+Remove-Item -LiteralPath $resolvedStaging -Recurse -Force
+Write-Output $zip

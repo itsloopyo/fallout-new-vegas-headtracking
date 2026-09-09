@@ -7,7 +7,6 @@
 #include "debug_log.h"
 
 #include <cameraunlock/math/angle_utils.h>
-#include <cameraunlock/math/deadzone_utils.h>
 #include <cameraunlock/math/smoothing_utils.h>
 
 #include "nvse_abi/GameAPI.h"
@@ -16,8 +15,6 @@
 #include <cmath>
 
 namespace HeadTracking {
-
-constexpr float kMaxPitchRad = 1.5f;  // ~85.9 degrees, prevents gimbal lock
 
 CameraController::CameraController()
     : m_enabled(true)
@@ -32,9 +29,6 @@ CameraController::CameraController()
     , m_localSmoothing(cameraunlock::math::kDefaultLocalSmoothing)
     , m_remoteSmoothing(cameraunlock::math::kDefaultRemoteSmoothing)
     , m_remoteConnection(false)
-    , m_sensitivity()
-    , m_deadzone()
-    , m_cameraMode(CameraMode::Coupled)
     , m_worldSpaceYaw(true) {
 }
 
@@ -80,6 +74,7 @@ void CameraController::Update(const TrackingData& data, float deltaTime) {
         return;
     }
 
+    const bool firstSample = !m_hasTrackingData;
     m_hasTrackingData = true;
 
     // The tracker owns the centre, so its pose is taken as absolute.
@@ -96,27 +91,6 @@ void CameraController::Update(const TrackingData& data, float deltaTime) {
     // Normalize yaw to -180 to +180 range
     rawYawOffset = cameraunlock::math::NormalizeAngle(rawYawOffset);
 
-    // Apply deadzone
-#if HEADTRACKING_DEBUG_LOGGING
-    double preDeadzoneYaw = rawYawOffset;
-    double preDeadzonePitch = rawPitchOffset;
-#endif
-    rawYawOffset = cameraunlock::math::ApplyDeadzone(rawYawOffset, m_deadzone.yaw);
-    rawPitchOffset = cameraunlock::math::ApplyDeadzone(rawPitchOffset, m_deadzone.pitch);
-    rawRollOffset = cameraunlock::math::ApplyDeadzone(rawRollOffset, m_deadzone.roll);
-
-#if HEADTRACKING_DEBUG_LOGGING
-    if (shouldLog) {
-        HT_LOG_CAMERA("  After deadzone (dz=%.1f): yaw %.2f->%.2f, pitch %.2f->%.2f",
-                    m_deadzone.yaw, preDeadzoneYaw, rawYawOffset, preDeadzonePitch, rawPitchOffset);
-    }
-#endif
-
-    // Apply sensitivity
-    rawYawOffset *= m_sensitivity.yaw;
-    rawPitchOffset *= m_sensitivity.pitch;
-    rawRollOffset *= m_sensitivity.roll;
-
     // Store raw values
     m_rawYaw = rawYawOffset;
     m_rawPitch = rawPitchOffset;
@@ -128,9 +102,16 @@ void CameraController::Update(const TrackingData& data, float deltaTime) {
     double effectiveSmoothing = cameraunlock::math::GetEffectiveSmoothing(
         m_localSmoothing, m_remoteSmoothing, m_remoteConnection);
 
-    m_smoothedYaw = cameraunlock::math::Smooth(m_smoothedYaw, rawYawOffset, effectiveSmoothing, static_cast<double>(deltaTime));
-    m_smoothedPitch = cameraunlock::math::Smooth(m_smoothedPitch, rawPitchOffset, effectiveSmoothing, static_cast<double>(deltaTime));
-    m_smoothedRoll = cameraunlock::math::Smooth(m_smoothedRoll, rawRollOffset, effectiveSmoothing, static_cast<double>(deltaTime));
+    if (firstSample || effectiveSmoothing == 0.0) {
+        m_smoothedYaw = rawYawOffset;
+        m_smoothedPitch = rawPitchOffset;
+        m_smoothedRoll = rawRollOffset;
+    } else {
+        m_smoothedYaw = cameraunlock::math::SmoothAngle(static_cast<float>(m_smoothedYaw), static_cast<float>(rawYawOffset),
+            static_cast<float>(effectiveSmoothing), deltaTime);
+        m_smoothedPitch = cameraunlock::math::Smooth(m_smoothedPitch, rawPitchOffset, effectiveSmoothing, static_cast<double>(deltaTime));
+        m_smoothedRoll = cameraunlock::math::Smooth(m_smoothedRoll, rawRollOffset, effectiveSmoothing, static_cast<double>(deltaTime));
+    }
 
 #if HEADTRACKING_DEBUG_LOGGING
     if (shouldLog) {
@@ -139,8 +120,6 @@ void CameraController::Update(const TrackingData& data, float deltaTime) {
     }
 #endif
 
-    // Apply rotation to game camera
-    ApplyCameraRotation(m_smoothedYaw, m_smoothedPitch, m_smoothedRoll);
 }
 
 void CameraController::SetEnabled(bool enabled) {
@@ -151,6 +130,7 @@ void CameraController::SetEnabled(bool enabled) {
     m_enabled = enabled;
 
     if (!enabled) {
+        ResetTracking();
         // Reset smoothed values when disabling
         m_smoothedYaw = 0.0;
         m_smoothedPitch = 0.0;
@@ -163,37 +143,11 @@ void CameraController::SetEnabled(bool enabled) {
 }
 
 void CameraController::SetLocalSmoothing(double smoothing) {
-    m_localSmoothing = cameraunlock::math::Clamp(smoothing, 0.0, 1.0);
+    m_localSmoothing = smoothing;
 }
 
 void CameraController::SetRemoteSmoothing(double smoothing) {
-    m_remoteSmoothing = cameraunlock::math::Clamp(smoothing, 0.0, 1.0);
-}
-
-void CameraController::SetSensitivity(const SensitivitySettings& sensitivity) {
-    m_sensitivity = sensitivity;
-    m_sensitivity.yaw = cameraunlock::math::Clamp(m_sensitivity.yaw, 0.1, 5.0);
-    m_sensitivity.pitch = cameraunlock::math::Clamp(m_sensitivity.pitch, 0.1, 5.0);
-    m_sensitivity.roll = cameraunlock::math::Clamp(m_sensitivity.roll, 0.1, 5.0);
-}
-
-void CameraController::SetDeadzone(const DeadzoneSettings& deadzone) {
-    m_deadzone = deadzone;
-    m_deadzone.yaw = cameraunlock::math::Clamp(m_deadzone.yaw, 0.0, 30.0);
-    m_deadzone.pitch = cameraunlock::math::Clamp(m_deadzone.pitch, 0.0, 30.0);
-    m_deadzone.roll = cameraunlock::math::Clamp(m_deadzone.roll, 0.0, 30.0);
-}
-
-void CameraController::SetCameraMode(CameraMode mode) {
-    if (m_cameraMode == mode) {
-        return;
-    }
-
-    m_cameraMode = mode;
-
-    if (g_ConsolePrint) {
-        g_ConsolePrint("HeadTracking: Camera mode set to %s", CameraModeName(mode));
-    }
+    m_remoteSmoothing = smoothing;
 }
 
 void CameraController::SetWorldSpaceYaw(bool worldSpace) {
@@ -209,90 +163,13 @@ void CameraController::ToggleYawMode() {
     }
 }
 
-void CameraController::ApplyCameraRotation(double yawOffset, double pitchOffset, double rollOffset) {
-    static double lastYaw = 0.0;
-    static double lastPitch = 0.0;
-
-    // In decoupled mode: Store offsets for D3D9 EndScene hook to apply
-    // DON'T modify player rotation - that would couple camera to movement
-    if (m_cameraMode == CameraMode::Decoupled) {
-        // Store offsets - the D3D9 EndScene hook will read these and apply to camera
-        m_smoothedYaw = yawOffset;
-        m_smoothedPitch = pitchOffset;
-
-        HT_LOG_CAMERA("Decoupled mode - stored yaw=%.2f pitch=%.2f for D3D hook",
-                    yawOffset, pitchOffset);
-
-        // DO NOT modify player rotation - return here
-        // The D3D9 EndScene hook will apply our offsets to the camera
-        return;
-    }
-
-    // Get player
-    uint8_t* player = *reinterpret_cast<uint8_t**>(GameOffsets::kPlayerBase);
-    if (!player) {
-        HT_LOG_CAMERA("ApplyCameraRotation: No player");
-        return;
-    }
-
-    float* pRotX = reinterpret_cast<float*>(player + GameOffsets::kPlayerRotX);  // Pitch
-    float* pRotZ = reinterpret_cast<float*>(player + GameOffsets::kPlayerRotZ);  // Yaw
-
-    __try {
-        if (m_cameraMode == CameraMode::BodyTracking) {
-            // Body Tracking Mode v5 - HEAD BONE APPROACH (like FNVR)
-            // Don't modify player.rotZ at all - leave movement direction alone
-            // Instead, try to find and rotate the "Bip01 Head" bone directly
-            // This separates visual head look from movement direction
-
-            // For now, just apply pitch tracking (doesn't affect movement)
-            // and leave yaw to mouse/stick (coupled to movement)
-
-            float pitchRad = static_cast<float>(-pitchOffset * cameraunlock::math::kDegToRad);
-            *pRotX += pitchRad - static_cast<float>(-lastPitch * cameraunlock::math::kDegToRad);
-
-            // Clamp pitch
-            if (*pRotX > kMaxPitchRad) *pRotX = kMaxPitchRad;
-            if (*pRotX < -kMaxPitchRad) *pRotX = -kMaxPitchRad;
-
-            lastPitch = pitchOffset;
-
-            // Yaw is intentionally not applied in body tracking mode
-            // Horizontal look follows body/movement direction
-            // Decoupled mode handles free look via D3D9 hook instead
-
-            HT_LOG_CAMERA("BodyTracking v5 - pitch=%.2f (yaw disabled, needs head bone)",
-                        pitchOffset);
-        } else {
-            // Coupled mode: modify player rotation directly
-            // This affects camera, crosshair, and movement direction
-
-            // Calculate delta from last frame (we need to apply incremental changes)
-            double deltaYaw = yawOffset - lastYaw;
-            double deltaPitch = pitchOffset - lastPitch;
-            lastYaw = yawOffset;
-            lastPitch = pitchOffset;
-
-            // Convert to radians (invert pitch for correct up/down)
-            float yawRad = static_cast<float>(deltaYaw * cameraunlock::math::kDegToRad);
-            float pitchRad = static_cast<float>(-deltaPitch * cameraunlock::math::kDegToRad);
-
-            // Add our delta rotation to player rotation
-            *pRotZ += yawRad;
-            *pRotX += pitchRad;
-
-            // Clamp pitch to prevent gimbal issues
-            if (*pRotX > kMaxPitchRad) *pRotX = kMaxPitchRad;
-            if (*pRotX < -kMaxPitchRad) *pRotX = -kMaxPitchRad;
-
-            HT_LOG_CAMERA("Coupled mode - Applied delta yaw=%.3f pitch=%.3f", deltaYaw, deltaPitch);
-        }
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-        HT_LOG_CAMERA("FATAL: SEH exception in ApplyCameraRotation writing to player at %p", player);
-        D3D9Hook::SignalFatalError("CameraController::ApplyCameraRotation");
-    }
-
-    (void)rollOffset;  // Roll not supported
-}
-
 }  // namespace HeadTracking
+
+namespace HeadTracking {
+void CameraController::ResetTracking() {
+    m_hasTrackingData = false;
+    m_smoothedYaw = m_smoothedPitch = m_smoothedRoll = 0.0;
+    m_posX = m_posY = m_posZ = 0.0f;
+    m_ads.Reset();
+}
+}

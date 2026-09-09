@@ -5,6 +5,17 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+enable_testing()
+add_executable(fnv_ads_tests tests/ads_tests.cpp)
+target_include_directories(fnv_ads_tests PRIVATE src cameraunlock-core/cpp/include)
+add_test(NAME fnv_ads COMMAND fnv_ads_tests)
+add_executable(fnv_weapon_view_tests tests/weapon_view_tests.cpp)
+target_include_directories(fnv_weapon_view_tests PRIVATE src)
+add_test(NAME fnv_weapon_view COMMAND fnv_weapon_view_tests)
+add_executable(fnv_startup_tests tests/startup_tests.cpp)
+target_include_directories(fnv_startup_tests PRIVATE src)
+add_test(NAME fnv_startup COMMAND fnv_startup_tests)
+
 # Debug logging option (disabled by default for release builds)
 option(HEADTRACKING_DEBUG_LOGGING "Enable debug file logging (performance impact)" OFF)
 
@@ -21,6 +32,7 @@ if(WIN32)
 endif()
 
 # CameraUnlock shared library (submodule)
+set(CAMERAUNLOCK_BUILD_HOOKS ON CACHE BOOL "" FORCE)
 add_subdirectory(${CMAKE_SOURCE_DIR}/cameraunlock-core/cpp cameraunlock-core)
 
 include_directories(${CMAKE_SOURCE_DIR}/src)
@@ -28,6 +40,10 @@ include_directories(${CMAKE_SOURCE_DIR}/src)
 # Source files
 set(SOURCES
     src/main.cpp
+    src/proxy_entry.cpp
+    src/build_registry.cpp
+    src/steam_offsets.cpp
+    src/gamepass_offsets.cpp
     src/plugin.cpp
     src/config.cpp
     src/udp_receiver.cpp
@@ -37,12 +53,17 @@ set(SOURCES
     src/d3d9_hook.cpp
     src/d3d9_crosshair.cpp
     src/d3d9_culling.cpp
+    src/world_query.cpp
+    src/weapon_view.cpp
+    src/sky_view.cpp
     src/window_centering.cpp
 )
 
 # Header files (for IDE project generation)
 set(HEADERS
     src/plugin.h
+    src/proxy_entry.h
+    src/build_profile.h
     src/version.h
     src/config.h
     src/tracking_data.h
@@ -53,6 +74,8 @@ set(HEADERS
     src/hotkey_handler.h
     src/d3d9_hook.h
     src/d3d9_internal.h
+    src/weapon_view.h
+    src/startup.h
     src/debug_log.h
     src/window_centering.h
 )
@@ -66,11 +89,14 @@ set(NVSE_ABI_HEADERS
 )
 
 # Create DLL
-add_library(HeadTracking SHARED ${SOURCES} ${HEADERS} ${NVSE_ABI_HEADERS})
+# The .def is what puts DirectSoundCreate8 on ordinal 11, which is the ordinal
+# the game imports. A name-only export would not satisfy the import.
+add_library(HeadTracking SHARED ${SOURCES} ${HEADERS} ${NVSE_ABI_HEADERS} src/dsound.def)
 
 # Link CameraUnlock library, Winsock and D3D9
 target_link_libraries(HeadTracking
     cameraunlock
+    minhook
     ws2_32
     d3d9
 )

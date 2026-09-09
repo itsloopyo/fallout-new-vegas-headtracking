@@ -1,91 +1,72 @@
 #include "window_centering.h"
+#include "startup.h"
 
-#include "debug_log.h"
-
+#include <cameraunlock/logging/file_log.h>
 #include <atomic>
 
 namespace HeadTracking {
-
+namespace culog = cameraunlock::logging;
 static std::atomic<bool> s_centered{false};
 
 void CenterWindowOnce(IDirect3DDevice9* device) {
-    if (!device) {
+    if (s_centered.load()) return;
+    D3DDEVICE_CREATION_PARAMETERS params{};
+    HRESULT hr = device->GetCreationParameters(&params);
+    if (FAILED(hr)) {
+        if (!s_centered.exchange(true))
+            culog::Line("ERROR: window GetCreationParameters failed: 0x%08lX", hr);
         return;
     }
-    bool expected = false;
-    if (!s_centered.compare_exchange_strong(expected, true)) {
-        return;
-    }
+    HWND hwnd = GetAncestor(params.hFocusWindow, GA_ROOT);
+    if (!hwnd || hwnd != FindGameWindow(GetCurrentProcessId())) return;
+    if (s_centered.exchange(true)) return;
 
     IDirect3DSwapChain9* swap = nullptr;
-    if (FAILED(device->GetSwapChain(0, &swap)) || !swap) {
-        HT_LOG_PLUGIN("window: GetSwapChain failed");
+    hr = device->GetSwapChain(0, &swap);
+    if (FAILED(hr)) {
+        culog::Line("ERROR: window GetSwapChain failed: 0x%08lX", hr);
         return;
     }
     D3DPRESENT_PARAMETERS pp{};
-    HRESULT hr = swap->GetPresentParameters(&pp);
+    hr = swap->GetPresentParameters(&pp);
     swap->Release();
     if (FAILED(hr)) {
-        HT_LOG_PLUGIN("window: GetPresentParameters failed");
+        culog::Line("ERROR: window GetPresentParameters failed: 0x%08lX", hr);
         return;
     }
-
-    HWND hwnd = pp.hDeviceWindow;
-    if (!hwnd) {
-        D3DDEVICE_CREATION_PARAMETERS params{};
-        if (SUCCEEDED(device->GetCreationParameters(&params))) {
-            hwnd = params.hFocusWindow;
-        }
-    }
-    if (!hwnd) {
-        HT_LOG_PLUGIN("window: no usable HWND from device");
+    if (!pp.Windowed) {
+        culog::Line("Window: fullscreen, centring skipped");
         return;
     }
-    HWND root = GetAncestor(hwnd, GA_ROOT);
-    if (root) {
-        hwnd = root;
-    }
-    HT_LOG_PLUGIN("window: target hwnd=%p (root=%p)", hwnd, root);
-    LONG bbW = static_cast<LONG>(pp.BackBufferWidth);
-    LONG bbH = static_cast<LONG>(pp.BackBufferHeight);
-    if (bbW <= 0 || bbH <= 0) {
-        HT_LOG_PLUGIN("window: invalid backbuffer size %ldx%ld", bbW, bbH);
-        return;
-    }
-
+    const LONG bbW = static_cast<LONG>(pp.BackBufferWidth);
+    const LONG bbH = static_cast<LONG>(pp.BackBufferHeight);
     HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
     MONITORINFO info{};
     info.cbSize = sizeof(info);
     if (!GetMonitorInfoW(monitor, &info)) {
-        HT_LOG_PLUGIN("window: GetMonitorInfoW failed");
+        culog::Line("ERROR: window GetMonitorInfo failed: %lu", GetLastError());
         return;
     }
     const RECT& work = info.rcWork;
-    LONG workW = work.right - work.left;
-    LONG workH = work.bottom - work.top;
-
-    DWORD style = static_cast<DWORD>(GetWindowLongW(hwnd, GWL_STYLE));
-    DWORD exStyle = static_cast<DWORD>(GetWindowLongW(hwnd, GWL_EXSTYLE));
+    const LONG workW = work.right - work.left;
+    const LONG workH = work.bottom - work.top;
+    const DWORD style = static_cast<DWORD>(GetWindowLongW(hwnd, GWL_STYLE));
+    const DWORD exStyle = static_cast<DWORD>(GetWindowLongW(hwnd, GWL_EXSTYLE));
     RECT desired{0, 0, bbW, bbH};
     if (!AdjustWindowRectEx(&desired, style, FALSE, exStyle)) {
-        HT_LOG_PLUGIN("window: AdjustWindowRectEx failed");
+        culog::Line("ERROR: window AdjustWindowRectEx failed: %lu", GetLastError());
         return;
     }
-    LONG winW = desired.right - desired.left;
-    LONG winH = desired.bottom - desired.top;
-
-    if (winW > workW) winW = workW;
-    if (winH > workH) winH = workH;
-
-    LONG newX = work.left + (workW - winW) / 2;
-    LONG newY = work.top + (workH - winH) / 2;
-    if (!SetWindowPos(hwnd, HWND_TOP, newX, newY, winW, winH,
-                      SWP_NOZORDER | SWP_NOACTIVATE)) {
-        HT_LOG_PLUGIN("window: SetWindowPos failed (err=%lu)", GetLastError());
+    const LONG winW = (desired.right - desired.left < workW) ? desired.right - desired.left : workW;
+    const LONG winH = (desired.bottom - desired.top < workH) ? desired.bottom - desired.top : workH;
+    const LONG newX = work.left + (workW - winW) / 2;
+    const LONG newY = work.top + (workH - winH) / 2;
+    if (!SetWindowPos(hwnd, nullptr, newX, newY, winW, winH, SWP_NOZORDER | SWP_NOACTIVATE)) {
+        culog::Line("ERROR: window SetWindowPos failed: %lu", GetLastError());
         return;
     }
-    HT_LOG_PLUGIN("window: resized+centered to %ldx%ld at (%ld, %ld) on work area %ldx%ld (backbuffer %ldx%ld)",
-                  winW, winH, newX, newY, workW, workH, bbW, bbH);
+    culog::Line("Window centred: process=%lu window=%p position=(%ld,%ld) size=%ldx%ld work=(%ld,%ld,%ld,%ld)",
+                GetCurrentProcessId(), hwnd, newX, newY, winW, winH,
+                work.left, work.top, work.right, work.bottom);
 }
-
-}  // namespace HeadTracking
+}

@@ -78,6 +78,16 @@ bool HeadTrackingPlugin::Initialize(const NVSEInterface* nvse) {
         return false;
     }
 
+    return Initialize();
+}
+
+// The loader-independent half. The proxy deployment has no script extender to
+// interrogate, so it enters here directly.
+bool HeadTrackingPlugin::Initialize() {
+    if (m_initialized) {
+        return true;
+    }
+
     // Load configuration from INI file first - other components depend on it.
     std::string iniPath = GetINIPath();
     if (!m_config->Load(iniPath)) {
@@ -121,8 +131,7 @@ bool HeadTrackingPlugin::Initialize(const NVSEInterface* nvse) {
     m_lastUpdateTime = cameraunlock::time::QpcNowMicros();
     m_lastConfigCheckTime = cameraunlock::time::QpcNowMicros();
 
-    culog::Line("Plugin initialized. Hooks are installed when a save loads; "
-                "watch for the camera-mode line below.");
+    culog::Line("Plugin initialized; tracking starts when gameplay and tracker data are available.");
 
     return true;
 }
@@ -155,7 +164,7 @@ void HeadTrackingPlugin::Update() {
     }
 #endif
 
-    if (!m_initialized || !m_gameLoaded) {
+    if (!m_initialized) {
         return;
     }
 
@@ -170,7 +179,6 @@ void HeadTrackingPlugin::Update() {
     }
 
     // Check for config file changes periodically (not every frame to reduce I/O)
-    // m_configCheckInterval is in ms, currentTime is in μs
     if (m_config && (currentTime - m_lastConfigCheckTime >= m_configCheckInterval * 1000)) {
         m_lastConfigCheckTime = currentTime;
         CheckConfigReload();
@@ -182,7 +190,7 @@ void HeadTrackingPlugin::Update() {
     }
 
     // Process hotkeys
-    if (m_hotkeyHandler) {
+    if (m_hotkeyHandler && m_gameState->CanProcessInput()) {
         ApplyHotkeyAction(m_hotkeyHandler->Update());
     }
 
@@ -210,6 +218,15 @@ void HeadTrackingPlugin::Update() {
                       frameCount, udpInit, udpConn, shouldTrack, hasNewData);
     }
 #endif
+
+    const bool suppressed = !m_gameLoaded || D3D9Internal::IsGamePaused() ||
+        !m_gameState->ShouldTrack() || !m_cameraController->IsEnabled() || !m_udpReceiver->IsConnected();
+    if (suppressed) {
+        ResetTracking();
+        return;
+    }
+    if (m_waitingForPose && !hasNewData) return;
+    m_waitingForPose = false;
 
     // Update camera controller with latest tracking data
     if (m_cameraController && m_udpReceiver && m_udpReceiver->IsConnected()) {
@@ -246,8 +263,7 @@ void HeadTrackingPlugin::Update() {
 
 void HeadTrackingPlugin::ApplyHotkeyAction(HotkeyAction action) {
     if (action == HotkeyAction::Toggle) {
-        m_poseInterpolator.Reset();
-        m_positionInterpolator.Reset();
+        ResetTracking();
     } else if (action == HotkeyAction::CycleTrackingMode) {
         // Three-state cycle:
         //   0 = normal (rotation + position)
@@ -258,7 +274,7 @@ void HeadTrackingPlugin::ApplyHotkeyAction(HotkeyAction action) {
         bool posEnabled = (m_trackingModeCycle != 1);
 
         if (m_cameraController) {
-            m_cameraController->SetEnabled(rotEnabled);
+            m_cameraController->SetRotationEnabled(rotEnabled);
             if (!posEnabled) {
                 m_cameraController->SetPositionOffset(0.0f, 0.0f, 0.0f);
             }
@@ -280,6 +296,12 @@ void HeadTrackingPlugin::ApplyHotkeyAction(HotkeyAction action) {
         if (g_ConsolePrint) {
             g_ConsolePrint("HeadTracking: Reticle %s", D3D9Internal::g_reticleEnabled ? "enabled" : "disabled");
         }
+    } else if (action == HotkeyAction::CycleAdsMode) {
+        const auto mode = cameraunlock::ads::NextAdsMode(m_cameraController->Ads().GetMode());
+        m_config->SetAdsMode(mode);
+        m_cameraController->Ads().SetMode(mode);
+        ResetTracking();
+        culog::Line("%s", cameraunlock::ads::AdsModeToast(mode));
     } else if (action == HotkeyAction::ToggleYawMode) {
         if (m_cameraController) {
             m_cameraController->ToggleYawMode();
@@ -311,6 +333,10 @@ void HeadTrackingPlugin::ProcessPositionTracking(const TrackingData& data, bool 
         static_cast<float>(pitchDeg * cameraunlock::math::kDegToRad),
         static_cast<float>(rollDeg * cameraunlock::math::kDegToRad));
 
+    if (cameraunlock::math::GetEffectiveSmoothing(m_config->GetLocalSmoothing(),
+            m_config->GetRemoteSmoothing(), m_udpReceiver->IsRemoteConnection()) == 0.0) {
+        m_positionProcessor.ResetSmoothing();
+    }
     m_lastPositionOffset = m_positionProcessor.Process(interpPos, headRotQ, deltaTime);
 
     // Push position offset to camera controller for the D3D9 hook to read.
@@ -394,42 +420,9 @@ void HeadTrackingPlugin::OnGameLoaded() {
     D3D9Hook::Instance().ResetUICache();
 
     // Log camera mode
-    if (m_cameraController) {
-        const char* modeName = "Unknown";
-        if (m_cameraController->GetCameraMode() == CameraMode::Coupled) {
-            modeName = "Coupled";
-            HT_LOG_PLUGIN("Camera mode: Coupled");
-            culog::Line("Camera mode: Coupled - no D3D9 hook is installed in this mode");
-        } else if (m_cameraController->IsDecoupled()) {
-            modeName = "Decoupled (D3D9 EndScene hook)";
-            HT_LOG_PLUGIN("Camera mode: Decoupled - initializing D3D9 EndScene hook");
-
-            // Initialize D3D9 EndScene hook for decoupled mode
-            D3D9Hook::Instance().SetCameraController(m_cameraController.get());
-            culog::Line("Camera mode: Decoupled - installing the D3D9 EndScene hook");
-            if (D3D9Hook::Instance().Initialize()) {
-                HT_LOG_PLUGIN("D3D9 EndScene hook initialized successfully");
-                culog::Line("D3D9 EndScene hook installed");
-                if (g_ConsolePrint) {
-                    g_ConsolePrint("HeadTracking: D3D9 hook active for decoupled mode");
-                }
-            } else {
-                HT_LOG_PLUGIN("ERROR: D3D9 hook initialization failed");
-                culog::Line("ERROR: D3D9 hook failed (%s) - head tracking will not render",
-                            D3D9Hook::Instance().GetErrorMessage());
-                if (g_ConsolePrint) {
-                    g_ConsolePrint("HeadTracking: ERROR - D3D9 hook failed: %s",
-                                   D3D9Hook::Instance().GetErrorMessage());
-                }
-            }
-        } else if (m_cameraController->GetCameraMode() == CameraMode::BodyTracking) {
-            modeName = "BodyTracking";
-            HT_LOG_PLUGIN("Camera mode: BodyTracking");
-            culog::Line("Camera mode: BodyTracking - no D3D9 hook is installed in this mode");
-        }
-        if (g_ConsolePrint) {
-            g_ConsolePrint("HeadTracking: Game loaded, camera mode: %s", modeName);
-        }
+    D3D9Hook::Instance().SetCameraController(m_cameraController.get());
+    if (!D3D9Hook::Instance().Initialize()) {
+        culog::Line("ERROR: render hooks failed: %s", D3D9Hook::Instance().GetErrorMessage());
     }
 }
 
@@ -448,15 +441,28 @@ std::string GetINIPath() {
         return "";
     }
 
-    std::string iniPath(dllPath);
-    size_t dotPos = iniPath.rfind('.');
-    if (dotPos != std::string::npos) {
-        iniPath = iniPath.substr(0, dotPos) + ".ini";
-    } else {
-        iniPath += ".ini";
-    }
+    // The config is named for the mod, not for the file the mod was loaded as.
+    // Deriving it from the DLL's own name was fine while the only deployment
+    // was Data\NVSE\Plugins\HeadTracking.dll; the proxy deployment is called
+    // dsound.dll, and that spelling sent it looking for DSOUND.ini and silently
+    // gave every user defaults.
+    std::string modulePath(dllPath);
+    size_t slashPos = modulePath.find_last_of("\\/");
+    const std::string dir =
+        (slashPos == std::string::npos) ? std::string() : modulePath.substr(0, slashPos + 1);
 
-    return iniPath;
+    return dir + "HeadTracking.ini";
 }
 
 }  // namespace HeadTracking
+
+namespace HeadTracking {
+void HeadTrackingPlugin::ResetTracking() {
+    D3D9Internal::ResetLeanClamp();
+    m_cameraController->ResetTracking();
+    m_poseInterpolator.Reset();
+    m_positionInterpolator.Reset();
+    m_positionProcessor.ResetSmoothing();
+    m_waitingForPose = true;
+}
+}

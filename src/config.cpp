@@ -1,4 +1,6 @@
 #include <Windows.h>
+#include <cameraunlock/config/config_key_schema.g.h>
+#include <stdexcept>
 
 #include "config.h"
 #include "plugin.h"
@@ -36,17 +38,12 @@ static void ConfigDiag(const char* level, const char* fmt, ...) {
 
 // Default values (match HeadTracking.ini defaults)
 constexpr uint16_t DEFAULT_UDP_PORT = 4242;
-constexpr double DEFAULT_SENSITIVITY = 1.0;
 constexpr double DEFAULT_LOCAL_SMOOTHING = cameraunlock::math::kDefaultLocalSmoothing;
 constexpr double DEFAULT_REMOTE_SMOOTHING = cameraunlock::math::kDefaultRemoteSmoothing;
-constexpr double DEFAULT_DEADZONE = 0.0;
 constexpr int DEFAULT_TOGGLE_KEY = 0x23;                // End
 constexpr int DEFAULT_CYCLE_TRACKING_MODE_KEY = 0x21;   // Page Up
 constexpr int DEFAULT_RETICLE_TOGGLE_KEY = 0x22;        // Page Down
-// Insert, not the catalogue-standard Page Down (0x22): Page Down is already
-// the reticle toggle in this mod, so the yaw-mode toggle takes the next free
-// nav-cluster key. Chord stays in the T/Y/U/G/H/J cluster (Ctrl+Shift+U).
-constexpr int DEFAULT_YAW_MODE_KEY = 0x2D;              // Insert
+constexpr int DEFAULT_YAW_MODE_KEY = 0x2E;              // Delete
 constexpr uint64_t DEFAULT_DEBOUNCE_MS = 200;
 constexpr int DEFAULT_INPUT_BLOCK_MODE = 0;  // Never
 
@@ -54,14 +51,8 @@ Config::Config()
     : m_iniPath()
     , m_loaded(false)
     , m_udpPort(DEFAULT_UDP_PORT)
-    , m_sensitivityYaw(DEFAULT_SENSITIVITY)
-    , m_sensitivityPitch(DEFAULT_SENSITIVITY)
-    , m_sensitivityRoll(DEFAULT_SENSITIVITY)
     , m_localSmoothing(DEFAULT_LOCAL_SMOOTHING)
     , m_remoteSmoothing(DEFAULT_REMOTE_SMOOTHING)
-    , m_deadzoneYaw(DEFAULT_DEADZONE)
-    , m_deadzonePitch(DEFAULT_DEADZONE)
-    , m_deadzoneRoll(DEFAULT_DEADZONE)
     , m_toggleKey(DEFAULT_TOGGLE_KEY)
     , m_cycleTrackingModeKey(DEFAULT_CYCLE_TRACKING_MODE_KEY)
     , m_reticleToggleKey(DEFAULT_RETICLE_TOGGLE_KEY)
@@ -72,7 +63,6 @@ Config::Config()
     , m_trackInVATS(false)
     , m_pauseDuringCombat(false)
     , m_showMessages(true)
-    , m_cameraMode(CameraMode::Decoupled)
     , m_worldSpaceYaw(true) {
 }
 
@@ -136,13 +126,14 @@ bool Config::Load(const std::string& iniPath) {
         g_ConsolePrint("HeadTracking: Loading config from %s", m_iniPath.c_str());
     }
 
+    if (!m_ini.ReadString("Sensitivity", "Yaw", "").empty() ||
+        !m_ini.ReadString("Deadzone", "Yaw", "").empty() ||
+        !m_ini.ReadString("Camera", "Mode", "").empty()) {
+        ConfigDiag("WARNING", "Sensitivity, Deadzone and Camera.Mode are retired and ignored. Configure pose shaping in the tracker; tracking now always leaves player aim unchanged.");
+    }
+
     // Network section
     m_udpPort = static_cast<uint16_t>(m_ini.ReadInt("Network", "Port", DEFAULT_UDP_PORT));
-
-    // Sensitivity section
-    m_sensitivityYaw = m_ini.ReadDouble("Sensitivity", "Yaw", DEFAULT_SENSITIVITY);
-    m_sensitivityPitch = m_ini.ReadDouble("Sensitivity", "Pitch", DEFAULT_SENSITIVITY);
-    m_sensitivityRoll = m_ini.ReadDouble("Sensitivity", "Roll", DEFAULT_SENSITIVITY);
 
     // Smoothing section
     m_localSmoothing = m_ini.ReadDouble("Smoothing", "LocalSmoothing", DEFAULT_LOCAL_SMOOTHING);
@@ -150,16 +141,33 @@ bool Config::Load(const std::string& iniPath) {
 
     WarnRetiredSmoothingKey(m_ini, "Smoothing", "Amount");
 
-    // Deadzone section
-    m_deadzoneYaw = m_ini.ReadDouble("Deadzone", "Yaw", DEFAULT_DEADZONE);
-    m_deadzonePitch = m_ini.ReadDouble("Deadzone", "Pitch", DEFAULT_DEADZONE);
-    m_deadzoneRoll = m_ini.ReadDouble("Deadzone", "Roll", DEFAULT_DEADZONE);
-
     // Hotkeys section
     m_toggleKey = m_ini.ReadHex("Hotkeys", "Toggle", DEFAULT_TOGGLE_KEY);
     m_cycleTrackingModeKey = m_ini.ReadHex("Hotkeys", "CycleTrackingMode", DEFAULT_CYCLE_TRACKING_MODE_KEY);
     m_reticleToggleKey = m_ini.ReadHex("Hotkeys", "ReticleToggle", DEFAULT_RETICLE_TOGGLE_KEY);
     m_yawModeKey = m_ini.ReadHex("Hotkeys", "YawModeKey", DEFAULT_YAW_MODE_KEY);
+    if (m_yawModeKey == VK_INSERT) {
+        ConfigDiag("WARNING", "Insert now cycles ADS mode; yaw mode moved to Delete / Ctrl+Shift+J");
+        m_yawModeKey = VK_DELETE;
+    }
+    char entries[4096] = {};
+    const DWORD count = GetPrivateProfileSectionA("Camera", entries, sizeof(entries), m_iniPath.c_str());
+    if (count >= sizeof(entries) - 2) {
+        ConfigDiag("ERROR", "[Camera] section exceeds 4094 bytes");
+        return false;
+    }
+    m_adsMode = cameraunlock::ads::kDefaultAdsMode;
+    m_adsModeKey = "ads_mode";
+    for (const char* entry = entries; *entry; entry += strlen(entry) + 1) {
+        const std::string line(entry);
+        const size_t equals = line.find('=');
+        const char* key = cameraunlock::ResolveConfigKey(line.substr(0, equals));
+        if (key && std::string(key) == cameraunlock::config_keys::kAdsMode && equals != std::string::npos) {
+            const std::string value = line.substr(equals + 1);
+            m_adsMode = cameraunlock::ads::ParseAdsMode(value.c_str());
+            m_adsModeKey = line.substr(0, equals);
+        }
+    }
     m_debounceMs = static_cast<uint64_t>(m_ini.ReadInt("Hotkeys", "DebounceMs", static_cast<int>(DEFAULT_DEBOUNCE_MS)));
 
     // GameState section
@@ -189,26 +197,6 @@ bool Config::Load(const std::string& iniPath) {
     // Feedback section
     m_showMessages = m_ini.ReadBool("Feedback", "ShowMessages", true);
 
-    // Camera section
-    // CameraMode: 0 = Coupled (camera follows player rotation, affects aim)
-    //             1 = Decoupled (camera independent, uses D3D hook)
-    //             2 = BodyTracking (camera follows head, movement uses body direction)
-    int cameraMode = m_ini.ReadInt("Camera", "Mode", 1);
-    switch (cameraMode) {
-        case 0:
-            m_cameraMode = CameraMode::Coupled;
-            break;
-        case 1:
-            m_cameraMode = CameraMode::Decoupled;
-            break;
-        case 2:
-            m_cameraMode = CameraMode::BodyTracking;
-            break;
-        default:
-            ConfigDiag("ERROR", "Invalid Camera Mode %d (valid: 0-2)", cameraMode);
-            return false;
-    }
-
     // WorldSpaceYaw: true = horizon-locked yaw (default), false = camera-local
     m_worldSpaceYaw = m_ini.ReadBool("Camera", "WorldSpaceYaw", true);
 
@@ -233,14 +221,8 @@ bool Config::Load(const std::string& iniPath) {
         return false;
     }
 
-    if (!inDoubleRange(m_sensitivityYaw,   0.1, 5.0,  "Sensitivity Yaw"))   return false;
-    if (!inDoubleRange(m_sensitivityPitch, 0.1, 5.0,  "Sensitivity Pitch")) return false;
-    if (!inDoubleRange(m_sensitivityRoll,  0.1, 5.0,  "Sensitivity Roll"))  return false;
     if (!inDoubleRange(m_localSmoothing,   0.0, 1.0,  "LocalSmoothing"))    return false;
     if (!inDoubleRange(m_remoteSmoothing,  0.0, 1.0,  "RemoteSmoothing"))   return false;
-    if (!inDoubleRange(m_deadzoneYaw,      0.0, 30.0, "Deadzone Yaw"))      return false;
-    if (!inDoubleRange(m_deadzonePitch,    0.0, 30.0, "Deadzone Pitch"))    return false;
-    if (!inDoubleRange(m_deadzoneRoll,     0.0, 30.0, "Deadzone Roll"))     return false;
 
     if (!keyInRange(m_toggleKey,            "toggle"))              return false;
     if (!keyInRange(m_cycleTrackingModeKey, "cycle tracking mode")) return false;
@@ -257,12 +239,9 @@ bool Config::Load(const std::string& iniPath) {
     if (g_ConsolePrint) {
         g_ConsolePrint("HeadTracking: Config loaded successfully");
         g_ConsolePrint("HeadTracking:   UDP Port: %u", m_udpPort);
-        g_ConsolePrint("HeadTracking:   Sensitivity: %.2f / %.2f / %.2f (yaw/pitch/roll)",
-                       m_sensitivityYaw, m_sensitivityPitch, m_sensitivityRoll);
         g_ConsolePrint("HeadTracking:   Smoothing: %.2f local / %.2f remote",
                        m_localSmoothing, m_remoteSmoothing);
-        g_ConsolePrint("HeadTracking:   Deadzone: %.2f / %.2f / %.2f",
-                       m_deadzoneYaw, m_deadzonePitch, m_deadzoneRoll);
+
     }
 
     return true;
@@ -299,12 +278,10 @@ bool Config::ApplyToComponents(CameraController* camera, HotkeyHandler* hotkey,
 
     // Apply to camera controller
     if (camera) {
-        camera->SetSensitivity(GetSensitivity());
         camera->SetLocalSmoothing(m_localSmoothing);
         camera->SetRemoteSmoothing(m_remoteSmoothing);
-        camera->SetDeadzone(GetDeadzone());
-        camera->SetCameraMode(m_cameraMode);
         camera->SetWorldSpaceYaw(m_worldSpaceYaw);
+        camera->Ads().SetMode(m_adsMode);
     }
 
     // Apply to hotkey handler - FAIL FAST if key codes are invalid
@@ -345,22 +322,6 @@ bool Config::ApplyToComponents(CameraController* camera, HotkeyHandler* hotkey,
     return true;
 }
 
-SensitivitySettings Config::GetSensitivity() const {
-    SensitivitySettings settings;
-    settings.yaw = m_sensitivityYaw;
-    settings.pitch = m_sensitivityPitch;
-    settings.roll = m_sensitivityRoll;
-    return settings;
-}
-
-DeadzoneSettings Config::GetDeadzone() const {
-    DeadzoneSettings deadzone;
-    deadzone.yaw = m_deadzoneYaw;
-    deadzone.pitch = m_deadzonePitch;
-    deadzone.roll = m_deadzoneRoll;
-    return deadzone;
-}
-
 bool Config::CreateDefaultConfig() {
     if (m_iniPath.empty()) {
         return false;
@@ -378,12 +339,6 @@ bool Config::CreateDefaultConfig() {
     file << "; UDP port for OpenTrack data (default: 4242)\n";
     file << "Port=" << DEFAULT_UDP_PORT << "\n";
     file << "\n";
-    file << "[Sensitivity]\n";
-    file << "; Multipliers for each axis (0.1 to 5.0)\n";
-    file << "Yaw=" << DEFAULT_SENSITIVITY << "\n";
-    file << "Pitch=" << DEFAULT_SENSITIVITY << "\n";
-    file << "Roll=" << DEFAULT_SENSITIVITY << "\n";
-    file << "\n";
     file << "[Smoothing]\n";
     file << "; Smoothing applied when the tracker runs on this machine (loopback).\n";
     file << "; 0 = no smoothing, 1 = heavy. Covers rotation and position.\n";
@@ -392,21 +347,15 @@ bool Config::CreateDefaultConfig() {
     file << "; 0 = no smoothing, 1 = heavy. Covers rotation and position.\n";
     file << "RemoteSmoothing=" << DEFAULT_REMOTE_SMOOTHING << "\n";
     file << "\n";
-    file << "[Deadzone]\n";
-    file << "; Deadzone thresholds in degrees (0.0 to 30.0)\n";
-    file << "Yaw=" << DEFAULT_DEADZONE << "\n";
-    file << "Pitch=" << DEFAULT_DEADZONE << "\n";
-    file << "Roll=" << DEFAULT_DEADZONE << "\n";
-    file << "\n";
     file << "[Hotkeys]\n";
     file << "; Nav-cluster virtual key codes (hex). Each action also accepts a\n";
-    file << "; fixed Ctrl+Shift+<letter> chord (Y/G/H/U) which is not configurable.\n";
-    file << "; End=0x23, PageUp=0x21, PageDown=0x22, Insert=0x2D\n";
+    file << "; fixed Ctrl+Shift+<letter> chord (Y/G/H/J) which is not configurable.\n";
+    file << "; End=0x23, PageUp=0x21, PageDown=0x22, Delete=0x2E; Insert cycles ADS\n";
     file << "Toggle=0x23\n";
     file << "CycleTrackingMode=0x21\n";
     file << "ReticleToggle=0x22\n";
-    file << "; Insert (Page Down is taken by ReticleToggle in this mod)\n";
-    file << "YawModeKey=0x2D\n";
+    file << "; Delete / Ctrl+Shift+J\n";
+    file << "YawModeKey=0x2E\n";
     file << "DebounceMs=" << DEFAULT_DEBOUNCE_MS << "\n";
     file << "\n";
     file << "[GameState]\n";
@@ -420,13 +369,22 @@ bool Config::CreateDefaultConfig() {
     file << "ShowMessages=1\n";
     file << "\n";
     file << "[Camera]\n";
-    file << "; Mode: 0=Coupled (affects aim), 1=Decoupled (free-look), 2=BodyTracking\n";
-    file << "Mode=1\n";
     file << "; WorldSpaceYaw: 1 = horizon-locked yaw (default), 0 = camera-local\n";
     file << "WorldSpaceYaw=1\n";
+    file << "; Insert / Ctrl+Shift+U: paused, marker, tracked\n";
+    file << "ads_mode=paused\n";
 
     file.close();
     return true;
 }
 
 }  // namespace HeadTracking
+
+namespace HeadTracking {
+void Config::SetAdsMode(cameraunlock::ads::AdsMode mode) {
+    if (!WritePrivateProfileStringA("Camera", m_adsModeKey.c_str(), cameraunlock::ads::AdsModeValue(mode), m_iniPath.c_str())) {
+        throw std::runtime_error("Could not persist AdsMode to " + m_iniPath + ": Win32 " + std::to_string(GetLastError()));
+    }
+    m_adsMode = mode;
+}
+}

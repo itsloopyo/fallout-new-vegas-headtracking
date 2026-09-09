@@ -3,67 +3,20 @@
 #include <Windows.h>
 
 #include "tracking_data.h"
+#include "ads.h"
 
 #include <cstdint>
 
 namespace HeadTracking {
 
-// Camera mode determines how head tracking is applied
-enum class CameraMode {
-    // Coupled: Head tracking modifies player rotation
-    // Camera, crosshair, and movement direction all follow head
-    Coupled,
-
-    // Decoupled (Free Look): Head tracking only affects view direction
-    // Crosshair and movement direction stay fixed to body orientation
-    // Requires D3D hook to modify view matrix independently
-    Decoupled,
-
-    // BodyTracking: Camera follows head, but movement uses separate body direction
-    // Body direction updates when player actively moves + turns with mouse
-    // Looking around doesn't change movement direction
-    BodyTracking
-};
-
-inline const char* CameraModeName(CameraMode mode) {
-    switch (mode) {
-        case CameraMode::Coupled:      return "Coupled";
-        case CameraMode::Decoupled:    return "Decoupled (Free Look)";
-        case CameraMode::BodyTracking: return "Body Tracking";
-    }
-    return "Unknown";
-}
-
-// Sensitivity settings (multipliers)
-struct SensitivitySettings {
-    double yaw;
-    double pitch;
-    double roll;
-
-    SensitivitySettings()
-        : yaw(1.0)
-        , pitch(1.0)
-        , roll(1.0) {
-    }
-};
-
-// Deadzone settings (degrees) - ignore small movements
-struct DeadzoneSettings {
-    double yaw;
-    double pitch;
-    double roll;
-
-    DeadzoneSettings()
-        : yaw(0.5)
-        , pitch(0.5)
-        , roll(0.5) {
-    }
-};
-
 class CameraController {
 public:
     CameraController();
     ~CameraController();
+
+    AdsState& Ads() { return m_ads; }
+    void ResetTracking();
+    void SetRotationEnabled(bool enabled) { m_rotationEnabled = enabled; }
 
     // Disable copying
     CameraController(const CameraController&) = delete;
@@ -92,16 +45,6 @@ public:
     // trackers mid-session switches the smoothing parameter with it.
     void SetIsRemoteConnection(bool isRemote) { m_remoteConnection = isRemote; }
 
-    // Sensitivity settings
-    void SetSensitivity(const SensitivitySettings& sensitivity);
-
-    // Deadzone settings
-    void SetDeadzone(const DeadzoneSettings& deadzone);
-
-    // Camera mode (coupled vs decoupled/free-look)
-    void SetCameraMode(CameraMode mode);
-    CameraMode GetCameraMode() const { return m_cameraMode; }
-
     // Yaw mode: true = world-space (horizon-locked, default), false = camera-local.
     // Read by the D3D9 culling hook when composing the view rotation.
     void SetWorldSpaceYaw(bool worldSpace);
@@ -109,9 +52,9 @@ public:
     void ToggleYawMode();
 
     // Get current applied offsets (used by D3D hook in decoupled mode)
-    double GetCurrentYawOffset() const { return m_smoothedYaw; }
-    double GetCurrentPitchOffset() const { return m_smoothedPitch; }
-    double GetCurrentRollOffset() const { return m_smoothedRoll; }
+    double GetCurrentYawOffset() const { return m_rotationEnabled ? m_smoothedYaw : 0.0; }
+    double GetCurrentPitchOffset() const { return m_rotationEnabled ? m_smoothedPitch : 0.0; }
+    double GetCurrentRollOffset() const { return m_rotationEnabled ? m_smoothedRoll : 0.0; }
 
     // Position offset (meters) - set by plugin, applied by D3D9 hook
     void SetPositionOffset(float x, float y, float z) { m_posX = x; m_posY = y; m_posZ = z; }
@@ -122,12 +65,9 @@ public:
     // Check if currently applying rotation
     bool IsActive() const { return m_enabled && m_hasTrackingData; }
 
-    // Check if in decoupled (free-look) mode
-    bool IsDecoupled() const { return m_cameraMode == CameraMode::Decoupled; }
-
 private:
-    // Apply the calculated rotation offset to the game camera
-    void ApplyCameraRotation(double yawOffset, double pitchOffset, double rollOffset);
+    AdsState m_ads;
+    bool m_rotationEnabled = true;
 
     // State
     bool m_enabled;
@@ -148,12 +88,6 @@ private:
     double m_localSmoothing;
     double m_remoteSmoothing;
     bool m_remoteConnection;
-    SensitivitySettings m_sensitivity;
-    DeadzoneSettings m_deadzone;
-
-    // Camera mode (coupled or decoupled)
-    CameraMode m_cameraMode;
-
     // Yaw mode: true = world-space (horizon-locked), false = camera-local
     bool m_worldSpaceYaw;
 

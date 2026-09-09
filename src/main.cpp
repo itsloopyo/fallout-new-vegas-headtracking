@@ -13,6 +13,8 @@
 #include "plugin.h"
 #include "version.h"
 #include "debug_log.h"
+#include "proxy_entry.h"
+#include "build_profile.h"
 
 #include <cameraunlock/logging/file_log.h>
 
@@ -107,6 +109,12 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Query(const NVSEInterface* nvse
     info->name = PLUGIN_NAME;
     info->version = PLUGIN_VERSION;
 
+    HMODULE proxy = GetModuleHandleW(L"dsound.dll");
+    if (proxy && proxy != g_hModule && GetProcAddress(proxy, "NVSEPlugin_Query")) {
+        culog::Line("NVSE compatibility copy dormant: root proxy owns head tracking");
+        return false;
+    }
+
     // Check NVSE version
     if (nvse->nvseVersion < NVSE_VERSION_REQUIRED) {
         culog::Line("NVSEPlugin_Query: NVSE %08X is older than the required %08X - not loading",
@@ -132,6 +140,11 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(const NVSEInterface* nvse)
     if (!nvse) {
         HT_LOG_MAIN("ERROR: nvse is null");
         culog::Line("ERROR: NVSE interface is null - plugin cannot load");
+        return false;
+    }
+
+    if (!ResolveRunningBuild()) {
+        LogBuildIdentification();
         return false;
     }
 
@@ -189,6 +202,12 @@ BOOL WINAPI DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved) {
         case DLL_PROCESS_ATTACH:
             g_hModule = hModule;
             DisableThreadLibraryCalls(hModule);
+            HeadTracking::Proxy::OnProcessAttach(hModule);
+            if (HeadTracking::Proxy::LoadedAsProxy(hModule)) {
+                // The proxy opens its own log next to the exe under the mod's
+                // name; opening a second one here would name it dsound.log.
+                break;
+            }
             OpenModLog(hModule);
             culog::Line("FNV Head Tracking v%d.%d.%d attached to the game process",
                       VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);

@@ -31,18 +31,16 @@ extern float g_mainCameraTanFovY;
 // The crosshair reads this directly - no separate angle-based formula needed.
 extern float g_bodyAimInCamera[3];
 
-// Normal FOV (captured at startup, before any zoom)
-// Used to detect ADS state
-extern float g_normalFovX;
-extern bool g_normalFovCaptured;
+extern bool g_aimProjectionValid;
+void RestoreCamera();
+bool GetCameraPositionOffset(const void* camera, float offset[3]);
+void ResetLeanClamp();
 
 // Cached D3D9 state block for crosshair drawing
 extern IDirect3DStateBlock9* g_cachedStateBlock;
 extern IDirect3DDevice9* g_stateBlockDevice;
 
 // Crosshair UI state
-extern void* g_crosshairTile;
-extern bool g_triedFindCrosshair;
 extern bool g_crosshairDisabled;
 extern bool g_reticleEnabled;  // User toggle (Insert key)
 
@@ -53,7 +51,6 @@ bool IsGamePaused();
 bool IsPlayerAiming();
 
 // Reset UI cache (call after loading screen)
-void ResetCrosshairCache();
 
 // Hide or show the HUD crosshair tile
 void SetCrosshairTileVisible(bool visible);
@@ -64,6 +61,8 @@ void DrawAimCrosshair(IDirect3DDevice9* device, const D3DVIEWPORT9& vp);
 
 // Install the culling plane hook
 bool InstallCullingHook();
+bool InstallWeaponViewHook();
+bool InstallSkyViewHook();
 
 // Apply rotation to a 3x3 matrix with baseline tracking.
 // worldSpaceYaw selects horizon-locked (true) vs camera-local (false) yaw.
@@ -74,11 +73,7 @@ bool ApplyRotationWithBaseline(float* camMatrix, double yawDeg, double pitchDeg,
 // Log player node hierarchy (debug only)
 void LogPlayerNodes();
 
-// Install a JMP hook at targetAddr that redirects to hookFn.
-// Copies hookSize bytes from targetAddr into a trampoline and appends a JMP back.
-// targetAddr must already be PAGE_EXECUTE_READWRITE (caller handles VirtualProtect).
-// Returns trampoline pointer (to call original function), or nullptr on failure.
-void* InstallJmpHook(void* targetAddr, void* hookFn, int hookSize);
+bool CreateHook(void* target, void* replacement, void** original);
 
 }  // namespace D3D9Internal
 }  // namespace HeadTracking

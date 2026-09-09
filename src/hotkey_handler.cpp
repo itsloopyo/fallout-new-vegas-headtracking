@@ -51,7 +51,7 @@ void HotkeyHandler::Initialize(CameraController* cameraController, GameState* ga
         g_ConsolePrint("HeadTracking:   Toggle tracking:     0x%02X / Ctrl+Shift+Y", m_toggleKeyCode);
         g_ConsolePrint("HeadTracking:   Cycle tracking mode: 0x%02X / Ctrl+Shift+G", m_cycleTrackingModeKeyCode);
         g_ConsolePrint("HeadTracking:   Reticle toggle:      0x%02X / Ctrl+Shift+H", m_reticleToggleKeyCode);
-        g_ConsolePrint("HeadTracking:   Yaw mode toggle:     0x%02X / Ctrl+Shift+U", m_yawModeKeyCode);
+        g_ConsolePrint("HeadTracking:   Yaw mode toggle:     0x%02X / Ctrl+Shift+J", m_yawModeKeyCode);
     }
 }
 
@@ -89,6 +89,7 @@ HotkeyAction HotkeyHandler::Update() {
     m_cycleTrackingModeKeyState.Update(cycleDown);
     m_reticleToggleKeyState.Update(reticleDown);
     m_yawModeKeyState.Update(yawModeDown);
+    m_adsKeyState.Update(IsActionDown(VK_INSERT, 'U', ctrlShiftHeld));
 
     uint64_t currentTime = GetTickCount64();
 
@@ -116,6 +117,7 @@ HotkeyAction HotkeyHandler::Update() {
     if (tryFire(m_reticleToggleKeyState, "ReticleToggle")) {
         return HotkeyAction::ReticleToggle;
     }
+    if (tryFire(m_adsKeyState, "CycleAdsMode")) return HotkeyAction::CycleAdsMode;
     if (tryFire(m_yawModeKeyState, "ToggleYawMode")) {
         return HotkeyAction::ToggleYawMode;
     }

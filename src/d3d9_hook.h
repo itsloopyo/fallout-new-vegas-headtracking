@@ -9,8 +9,7 @@ namespace HeadTracking {
 // Forward declarations
 class CameraController;
 
-// D3D9 Hook for intercepting EndScene to modify camera right before frame presents
-// This runs after all game rendering setup, giving us a chance to modify the view
+// Frame presentation, render hooks and tracking lifecycle.
 class D3D9Hook {
 public:
     static D3D9Hook& Instance();
@@ -35,7 +34,7 @@ public:
     // Get last error message
     const char* GetErrorMessage() const { return m_lastError; }
 
-    // Get camera controller (for BeginScene hook)
+    // Get camera controller (for render hooks)
     static CameraController* GetCameraController() { return s_cameraController; }
 
     // Signal a fatal error (called from exception handlers)
@@ -53,8 +52,8 @@ private:
     D3D9Hook& operator=(const D3D9Hook&) = delete;
 
 
-    // Our hooked EndScene implementation
-    static HRESULT STDMETHODCALLTYPE HookedEndScene(IDirect3DDevice9* device);
+    static HRESULT STDMETHODCALLTYPE HookedPresent(IDirect3DDevice9* device, const RECT* source,
+        const RECT* destination, HWND window, const RGNDATA* dirtyRegion);
 
     // State
     bool m_initialized;
@@ -63,7 +62,7 @@ private:
     bool m_fatalError;  // Set on SEH exception - disables hook permanently
 
     // Original function pointer
-    static void* s_originalEndScene;
+    static void* s_originalPresent;
 
     // Device vtable for unhooking
     void** m_deviceVTable;

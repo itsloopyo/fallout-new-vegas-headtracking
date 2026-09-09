@@ -2,18 +2,14 @@
 
 #include <cstdint>
 
-// Single source of truth for the Fallout: New Vegas (1.4.0.525) runtime memory
-// layout the plugin reverse-engineers. These addresses and field offsets were
-// previously duplicated across camera_controller.cpp, d3d9_hook.cpp and
-// d3d9_culling.cpp; centralizing them keeps the RE knowledge in one place so a
-// single discovery (or a runtime version bump) updates every reader at once.
+#include "build_profile.h"
 
 namespace HeadTracking {
 namespace GameOffsets {
 
 // Global singleton pointers (a pointer to the object lives at this address).
-constexpr uintptr_t kPlayerBase     = 0x011DEA3C;  // PlayerCharacter*
-constexpr uintptr_t kSceneGraphBase = 0x011DEB7C;  // SceneGraph*
+inline uintptr_t PlayerBase() { return ActiveProfile().playerBase; }
+inline uintptr_t SceneGraphBase() { return ActiveProfile().sceneGraphBase; }
 
 // PlayerCharacter field offsets (rotation stored in radians).
 constexpr uintptr_t kPlayerRotX = 0x24;  // pitch (looking up/down)

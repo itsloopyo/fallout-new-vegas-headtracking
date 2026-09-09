@@ -6,8 +6,13 @@
 #include "camera_controller.h"
 #include "game_offsets.h"
 #include "debug_log.h"
+#include "world_query.h"
+#include "weapon_view.h"
+#include <cameraunlock/camera/lean_clamp.h>
 
 #include <cameraunlock/math/angle_utils.h>
+#include <cameraunlock/camera/zoom_compensation.h>
+#include <cameraunlock/logging/file_log.h>
 
 #include <cstring>
 #include <cmath>
@@ -15,18 +20,11 @@
 namespace HeadTracking {
 namespace D3D9Internal {
 
-// Address of the culling plane calculation function
-static constexpr uintptr_t ADDR_CALC_CULLING_PLANES = 0xA74E10;
-
 // Hook trampoline
 static void* s_calcCullingTrampoline = nullptr;
 
 // Expansion factor for culling (widens frustum for culling only)
 constexpr float kCullingExpansion = 20.0f;
-
-// FOV capture range for identifying the main camera frustum
-constexpr float kFovCaptureMin = 0.9f;
-constexpr float kFovCaptureMax = 1.2f;
 
 // Matrix rotation state tracking
 static float* s_lastModifiedMatrix = nullptr;
@@ -36,6 +34,7 @@ static bool s_hasRotationState = false;
 
 // Body aim direction in rotated camera frame (for crosshair projection).
 // Computed from actual rotation matrices - model-agnostic.
+bool g_aimProjectionValid = false;
 float g_bodyAimInCamera[3] = {1.0f, 0.0f, 0.0f};
 
 // Position offset state.  The engine refreshes the camera position each
@@ -143,33 +142,38 @@ static bool PositionStillHasOurOffset(float* pos) {
     return true;
 }
 
-// Apply positional head tracking by directly offsetting the NiCamera position.
-// Must be called AFTER CalcCullingPlanes returns; calling it before triggers
-// a BSP traversal crash.  Uses the pre-rotation basis (the body's orientation,
-// not the head's) to transform the tracker-space offset to world space.
-static void ApplyCameraPositionOffset(float* camPos, float posX, float posY, float posZ) {
-    if (!camPos) return;
+static cameraunlock::camera::LeanClamp s_leanClamp;
 
+static void ApplyCameraPositionOffset(float* camPos, float posX, float posY, float posZ,
+                                      float nearClip) {
     if (PositionStillHasOurOffset(camPos)) {
         memcpy(camPos, s_positionBefore, sizeof(s_positionBefore));
     }
-
     memcpy(s_positionBefore, camPos, sizeof(s_positionBefore));
-
-    // Columns of the pre-rotation matrix are the body's local basis in world:
-    //   col 0 = forward = (m[0], m[3], m[6])
-    //   col 1 = up      = (m[1], m[4], m[7])
-    //   col 2 = right   = (m[2], m[5], m[8])
-    // world_offset = posX*right + posY*up + posZ*forward
-    float* m = s_matrixBeforeRotation;
-    float worldX = posX * m[2] + posY * m[1] + posZ * m[0];
-    float worldY = posX * m[5] + posY * m[4] + posZ * m[3];
-    float worldZ = posX * m[8] + posY * m[7] + posZ * m[6];
-
-    camPos[0] += worldX;
-    camPos[1] += worldY;
-    camPos[2] += worldZ;
-
+    const float* m = s_matrixBeforeRotation;
+    using cameraunlock::math::Vec3;
+    const Vec3 desired{posX*m[2] + posY*m[1] + posZ*m[0],
+                       posX*m[5] + posY*m[4] + posZ*m[3],
+                       posX*m[8] + posY*m[7] + posZ*m[6]};
+    cameraunlock::camera::LeanClampSettings settings;
+    settings.skin = nearClip + 1.0f;
+    s_leanClamp.SetSettings(settings);
+    static ULONGLONG previous = GetTickCount64();
+    const ULONGLONG now = GetTickCount64();
+    const float dt = static_cast<float>(now - previous) * 0.001f;
+    previous = now;
+    const Vec3 offset = s_leanClamp.Apply({camPos[0], camPos[1], camPos[2]}, desired, dt,
+        [](void*, const Vec3& start, const Vec3& direction, float distance) {
+            const auto hit = TraceWorld(start, direction, distance, true);
+            return cameraunlock::camera::LeanObstruction{hit.queried, hit.blocked, hit.distance};
+        }, nullptr);
+    if (s_leanClamp.LastQueryFailed()) {
+        D3D9Hook::SignalFatalError("camera collision query");
+        return;
+    }
+    camPos[0] += offset.x;
+    camPos[1] += offset.y;
+    camPos[2] += offset.z;
     memcpy(s_positionAfter, camPos, sizeof(s_positionAfter));
     s_lastModifiedPosition = camPos;
     s_hasPositionState = true;
@@ -213,6 +217,35 @@ bool ApplyRotationWithBaseline(float* camMatrix, double yawDeg, double pitchDeg,
     return engineRefreshed;
 }
 
+void ResetLeanClamp() { s_leanClamp.Reset(); }
+
+bool GetCameraPositionOffset(const void* camera, float offset[3]) {
+    if (!camera || reinterpret_cast<const uint8_t*>(camera) + 0x8C !=
+        reinterpret_cast<const uint8_t*>(s_lastModifiedPosition) ||
+        !PositionStillHasOurOffset(s_lastModifiedPosition)) return false;
+    for (int i = 0; i < 3; ++i) offset[i] = s_positionAfter[i] - s_positionBefore[i];
+    return true;
+}
+
+void RestoreCamera() {
+    g_weaponView.valid = false;
+    bool restored = false;
+    if (MatrixStillHasOurRotation(s_lastModifiedMatrix)) {
+        memcpy(s_lastModifiedMatrix, s_matrixBeforeRotation, sizeof(s_matrixBeforeRotation));
+        restored = true;
+    }
+    if (PositionStillHasOurOffset(s_lastModifiedPosition)) {
+        memcpy(s_lastModifiedPosition, s_positionBefore, sizeof(s_positionBefore));
+        restored = true;
+    }
+    if (restored) {
+        auto* camera = reinterpret_cast<uint8_t*>(s_lastModifiedMatrix) - 0x68;
+        reinterpret_cast<void (__thiscall*)(void*)>(ActiveProfile().updateCameraProjection)(camera);
+    }
+    s_hasRotationState = false;
+    s_hasPositionState = false;
+}
+
 // Hook wrapper for culling plane calculation
 static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, void* frustum, void* worldTransform) {
     (void)edx;
@@ -231,7 +264,7 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
 #endif
 
     CameraController* controller = D3D9Hook::GetCameraController();
-    bool shouldExpand = controller && controller->IsDecoupled() && controller->IsActive();
+    bool shouldExpand = controller && controller->IsActive();
     bool appliedRotation = false;
     bool isMainCamera = false;
 
@@ -244,7 +277,7 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
     static uint8_t* s_cachedCamera = nullptr;
     static void* s_cachedMainWorldTransform = nullptr;
 
-    uint8_t* sceneGraph = *reinterpret_cast<uint8_t**>(GameOffsets::kSceneGraphBase);
+    uint8_t* sceneGraph = *reinterpret_cast<uint8_t**>(GameOffsets::SceneGraphBase());
     if (sceneGraph) {
         uint8_t* camera = *reinterpret_cast<uint8_t**>(sceneGraph + GameOffsets::kSceneGraphCamera);
         if (camera) {
@@ -265,13 +298,40 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
     // the last short-circuit term so it runs ~once per frame, not once per
     // frustum (shadow/reflection/refraction passes skip it).
     if (D3D9Hook::Instance().IsEnabled() && controller && shouldExpand && worldTransform && isMainCamera && !IsGamePaused()) {
-        double yawDeg = controller->GetCurrentYawOffset();
-        double pitchDeg = controller->GetCurrentPitchOffset();
-        double rollDeg = controller->GetCurrentRollOffset();
+        const AdsState::Pose absolute{
+            static_cast<float>(controller->GetCurrentPitchOffset()),
+            static_cast<float>(controller->GetCurrentYawOffset()),
+            static_cast<float>(controller->GetCurrentRollOffset()),
+            controller->GetPositionX(), controller->GetPositionY(), controller->GetPositionZ()
+        };
+        auto pose = controller->Ads().Update(false, IsPlayerAiming(), true, absolute, GetTickCount64());
+        const float baseFov = *reinterpret_cast<const float*>(ActiveProfile().defaultWorldFov);
+        float zoom = 1.0f;
+        if (f && std::isfinite(f[2]) && f[2] > 0.0f &&
+            std::isfinite(baseFov) && baseFov > 0.0f && baseFov < 180.0f) {
+            // The game's FOV setting is horizontal at 4:3; the frustum is vertical.
+            const float baseTanY = std::tan(baseFov * kDegToRadF * 0.5f) * 0.75f;
+            zoom = cameraunlock::camera::FovZoomFactor(f[2], baseTanY);
+            pose.yaw = cameraunlock::camera::ScaleAngleForZoom(pose.yaw, zoom);
+            pose.pitch = cameraunlock::camera::ScaleAngleForZoom(pose.pitch, zoom);
+            pose.x *= zoom;
+            pose.y *= zoom;
+            pose.z *= zoom;
+        }
+        const double yawDeg = pose.yaw;
+        const double pitchDeg = pose.pitch;
+        const double rollDeg = pose.roll;
 
-        if (IsPlayerAiming()) {
-            yawDeg *= 2.0;
-            pitchDeg *= 2.0;
+        static ULONGLONG lastProbe = 0;
+        const ULONGLONG now = GetTickCount64();
+        if (now - lastProbe >= 1000) {
+            lastProbe = now;
+            auto* player = *reinterpret_cast<uint8_t**>(ActiveProfile().playerBase);
+            cameraunlock::logging::Line(
+                "Camera: ADS=%d mode=%s head=(%.2f,%.2f,%.2f) render=(%.2f,%.2f,%.2f) zoom=%.4f aim=(%.6f,%.6f)",
+                controller->Ads().IsAiming(), cameraunlock::ads::AdsModeValue(controller->Ads().GetMode()),
+                absolute.yaw, absolute.pitch, absolute.roll, yawDeg, pitchDeg, rollDeg, zoom,
+                *reinterpret_cast<float*>(player + 0x2C), *reinterpret_cast<float*>(player + 0x24));
         }
 
         __try {
@@ -279,48 +339,63 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
                                       controller->IsWorldSpaceYaw());
             appliedRotation = true;
 
-            // body_world = pre-rotation forward (column 0 of pre-rotation matrix).
-            // Project into rotated camera frame via dot products with new columns.
-            // [0] = depth (along new forward, col 0)
-            // [1] = up    (along new up,      col 1)
-            // [2] = right (along new right,   col 2)
-            float bf0 = s_matrixBeforeRotation[0];
-            float bf1 = s_matrixBeforeRotation[3];
-            float bf2 = s_matrixBeforeRotation[6];
-            g_bodyAimInCamera[0] = bf0*camMatrix[0] + bf1*camMatrix[3] + bf2*camMatrix[6];
-            g_bodyAimInCamera[1] = bf0*camMatrix[1] + bf1*camMatrix[4] + bf2*camMatrix[7];
-            g_bodyAimInCamera[2] = bf0*camMatrix[2] + bf1*camMatrix[5] + bf2*camMatrix[8];
         } __except(EXCEPTION_EXECUTE_HANDLER) {
             D3D9Hook::SignalFatalError("ApplyRotationWithBaseline in HookedCalcCullingPlanes");
         }
 
-        // Positional head tracking. MUST be applied before origFunc: the view
-        // matrix is built inside CalcCullingPlanes, so a post-call write lands
-        // too late and is discarded. The ×20 frustum expansion covers the
-        // offset for culling.
-        float posX = controller->GetPositionX();   // meters, right
-        float posY = controller->GetPositionY();   // meters, up
-        float posZ = controller->GetPositionZ();   // meters, forward
+        // Apply position before the game builds the view matrix.
+        float posX = pose.x;   // meters, right
+        float posY = pose.y;   // meters, up
+        float posZ = pose.z;   // meters, forward
 
-        if (posX != 0.0f || posY != 0.0f || posZ != 0.0f) {
+        if (posX != 0.0f || posY != 0.0f || posZ != 0.0f || s_hasPositionState) {
             float* camPos = reinterpret_cast<float*>(
                 static_cast<uint8_t*>(worldTransform) + GameOffsets::kWorldTransformToPosition);
             ApplyCameraPositionOffset(camPos,
                 posX * kGameUnitsPerMeter,
                 posY * kGameUnitsPerMeter,
-                posZ * kGameUnitsPerMeter);
+                posZ * kGameUnitsPerMeter, f[4]);
         }
+    }
+    if (isMainCamera && controller && controller->IsActive() && !IsGamePaused() &&
+        (controller->Ads().ShowMarker() || (!IsPlayerAiming() && g_reticleEnabled))) {
+        SetCrosshairTileVisible(false);
+        g_crosshairDisabled = true;
+    }
+    if (appliedRotation) {
+        using cameraunlock::math::Vec3;
+        const auto* position = reinterpret_cast<const float*>(
+            static_cast<const uint8_t*>(worldTransform) + GameOffsets::kWorldTransformToPosition);
+        const float* cleanPosition = s_hasPositionState ? s_positionBefore : position;
+        const Vec3 origin{cleanPosition[0], cleanPosition[1], cleanPosition[2]};
+        const Vec3 forward{s_matrixBeforeRotation[0], s_matrixBeforeRotation[3], s_matrixBeforeRotation[6]};
+        const auto hit = TraceWorld(origin, forward, f[5], false);
+        const Vec3 point = origin + forward * hit.distance;
+        const Vec3 delta = point - Vec3{position[0], position[1], position[2]};
+        g_bodyAimInCamera[0] = delta.x*camMatrix[0] + delta.y*camMatrix[3] + delta.z*camMatrix[6];
+        g_bodyAimInCamera[1] = delta.x*camMatrix[1] + delta.y*camMatrix[4] + delta.z*camMatrix[7];
+        g_bodyAimInCamera[2] = delta.x*camMatrix[2] + delta.y*camMatrix[5] + delta.z*camMatrix[8];
+        if (!hit.queried) appliedRotation = false;
     }
     float origLeft = 0, origRight = 0, origTop = 0, origBottom = 0;
 
-    if (f) {
-        if (f[1] > kFovCaptureMin && f[1] < kFovCaptureMax) {
+    if (isMainCamera) {
+        g_aimProjectionValid = appliedRotation && f && std::isfinite(f[1]) &&
+                              std::isfinite(f[2]) && f[1] > 0.0f && f[2] > 0.0f;
+        if (g_aimProjectionValid) {
             g_mainCameraTanFovX = f[1];
             g_mainCameraTanFovY = f[2];
+            float offset[3]{};
+            if (s_hasPositionState) {
+                for (int i = 0; i < 3; ++i) offset[i] = s_positionAfter[i] - s_positionBefore[i];
+            }
+            g_weaponView.Capture(s_matrixBeforeRotation, camMatrix, offset, f[1], f[2]);
+        } else {
+            g_weaponView.valid = false;
         }
     }
 
-    if (shouldExpand && f) {
+    if (appliedRotation && f) {
         origLeft = f[0];
         origRight = f[1];
         origTop = f[2];
@@ -343,11 +418,14 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
     OrigCalcCullingPlanesFn origFunc = reinterpret_cast<OrigCalcCullingPlanesFn>(s_calcCullingTrampoline);
     origFunc(frustumPlanes, frustum, worldTransform);
 
-    if (shouldExpand && f) {
+    if (appliedRotation && f) {
         f[0] = origLeft;
         f[1] = origRight;
         f[2] = origTop;
         f[3] = origBottom;
+        // World transform edits do not rebuild NiCamera's cached projection.
+        auto* camera = reinterpret_cast<uint8_t*>(camMatrix) - 0x68;
+        reinterpret_cast<void (__thiscall*)(void*)>(ActiveProfile().updateCameraProjection)(camera);
 
 #if HEADTRACKING_DEBUG_LOGGING
         if (shouldLog) {
@@ -369,32 +447,37 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
 #endif
 }
 
+static void* s_setCameraFov = nullptr;
+static void __fastcall HookedSetCameraFov(void* sceneGraph, void*, float fov, bool force, void* camera, bool lod) {
+    using Original = void (__thiscall*)(void*, float, bool, void*, bool);
+    reinterpret_cast<Original>(s_setCameraFov)(sceneGraph, fov, force, camera, lod);
+    auto* target = camera ? static_cast<uint8_t*>(camera) :
+        *reinterpret_cast<uint8_t**>(static_cast<uint8_t*>(sceneGraph) + 0xAC);
+    if (D3D9Hook::IsFatalErrorSet() || !s_hasRotationState || !target ||
+        target + 0x68 != reinterpret_cast<uint8_t*>(s_lastModifiedMatrix)) return;
+    const auto* frustum = reinterpret_cast<const float*>(target + 0xDC);
+    // A weapon lens temporarily reuses this camera. Restore tracking only when
+    // the engine returns to the lens used for the tracked world draw.
+    if (std::fabs(frustum[1] - g_mainCameraTanFovX) > 0.0001f ||
+        std::fabs(frustum[2] - g_mainCameraTanFovY) > 0.0001f) return;
+    const bool lostTracking = !MatrixStillHasOurRotation(s_lastModifiedMatrix);
+    std::memcpy(target + 0x68, s_matrixAfterRotation, sizeof(s_matrixAfterRotation));
+    if (s_hasPositionState) std::memcpy(target + 0x8C, s_positionAfter, sizeof(s_positionAfter));
+    reinterpret_cast<void (__thiscall*)(void*)>(ActiveProfile().updateCameraProjection)(target);
+    static ULONGLONG lastLog = 0;
+    const auto now = GetTickCount64();
+    if (lostTracking && now - lastLog >= 1000) {
+        lastLog = now;
+        cameraunlock::logging::Line("Camera FOV rebuild: restored tracking at %.2f degrees", fov);
+    }
+}
+
 bool InstallCullingHook() {
-    HT_LOG_D3D("Installing culling plane hook at 0x%08X", ADDR_CALC_CULLING_PLANES);
-
-    DWORD oldProtect;
-    if (!VirtualProtect(reinterpret_cast<void*>(ADDR_CALC_CULLING_PLANES), 16, PAGE_EXECUTE_READWRITE, &oldProtect)) {
-        HT_LOG_D3D("ERROR: VirtualProtect failed for culling hook");
-        return false;
-    }
-
-    constexpr int CULLING_HOOK_SIZE = 10;
-
-    s_calcCullingTrampoline = InstallJmpHook(
-        reinterpret_cast<void*>(ADDR_CALC_CULLING_PLANES),
-        reinterpret_cast<void*>(&HookedCalcCullingPlanes),
-        CULLING_HOOK_SIZE);
-    if (!s_calcCullingTrampoline) {
-        VirtualProtect(reinterpret_cast<void*>(ADDR_CALC_CULLING_PLANES), 16, oldProtect, &oldProtect);
-        HT_LOG_D3D("ERROR: Failed to install culling hook");
-        return false;
-    }
-
-    VirtualProtect(reinterpret_cast<void*>(ADDR_CALC_CULLING_PLANES), 16, oldProtect, &oldProtect);
-    FlushInstructionCache(GetCurrentProcess(), reinterpret_cast<void*>(ADDR_CALC_CULLING_PLANES), 16);
-
-    HT_LOG_D3D("Culling hook installed successfully!");
-    return true;
+    return CreateHook(reinterpret_cast<void*>(ActiveProfile().calcCullingPlanes),
+                      reinterpret_cast<void*>(&HookedCalcCullingPlanes),
+                      &s_calcCullingTrampoline) &&
+        CreateHook(reinterpret_cast<void*>(ActiveProfile().setCameraFov),
+            reinterpret_cast<void*>(&HookedSetCameraFov), &s_setCameraFov);
 }
 
 }  // namespace D3D9Internal

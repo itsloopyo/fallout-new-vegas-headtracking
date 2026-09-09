@@ -20,14 +20,14 @@ constexpr int VK_RETICLE_TOGGLE_DEFAULT = VK_NEXT;          // 0x22 (Page Down)
 // Page Down is taken by the reticle toggle in this mod, so the yaw-mode
 // toggle uses the next free nav-cluster key (Insert) instead of the
 // catalogue-standard Page Down.
-constexpr int VK_YAW_MODE_DEFAULT = VK_INSERT;              // 0x2D
+constexpr int VK_YAW_MODE_DEFAULT = VK_DELETE;              // 0x2D
 
 // Fixed Ctrl+Shift+<letter> chord letters, drawn from the T/Y/U/G/H/J cluster.
 // Slot order across all CameraUnlock mods: Y, G, H, U, J.
 constexpr int VK_CHORD_TOGGLE = 'Y';                // 0x59
 constexpr int VK_CHORD_CYCLE_TRACKING_MODE = 'G';   // 0x47
 constexpr int VK_CHORD_RETICLE_TOGGLE = 'H';        // 0x48
-constexpr int VK_CHORD_YAW_MODE = 'U';              // 0x55
+constexpr int VK_CHORD_YAW_MODE = 'J';              // 0x55
 
 // Key state tracking to detect press events (not hold)
 struct KeyState {
@@ -59,6 +59,7 @@ enum class HotkeyAction {
     Toggle,              // Toggle head tracking on/off
     CycleTrackingMode,   // Cycle: normal -> rotation-only -> position-only -> normal
     ReticleToggle,       // Toggle aim reticle on/off
+    CycleAdsMode,
     ToggleYawMode        // Toggle world-space (horizon-locked) vs camera-local yaw
 };
 
@@ -131,6 +132,7 @@ private:
     KeyState m_cycleTrackingModeKeyState;
     KeyState m_reticleToggleKeyState;
     KeyState m_yawModeKeyState;
+    KeyState m_adsKeyState;
 
     // Enabled state
     bool m_enabled;

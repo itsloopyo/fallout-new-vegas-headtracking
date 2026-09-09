@@ -54,3 +54,8 @@ CLAUDE.md
 # OS
 .DS_Store
 Thumbs.db
+
+.agents/
+.codex/
+skills/
+libs/

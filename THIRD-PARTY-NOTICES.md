@@ -11,7 +11,8 @@ Fallout: New Vegas.
 
 | Component | Version | Licence | How it ships |
 |-----------|---------|---------|--------------|
-| cameraunlock-core | f441e29427b7422a584ba492dddd7788881804b0 | MIT | Compiled into `HeadTracking.dll` |
+| cameraunlock-core | f92be69967d9a7afc9eba55dff8fea4ec55e064c | MIT | Compiled into `HeadTracking.dll` |
+| MinHook | 1.3.4 | BSD-2-Clause | Compiled into `HeadTracking.dll` |
 | OpenTrack | n/a | ISC | Not bundled; UDP protocol interoperability only |
 
 ---
@@ -21,7 +22,7 @@ Fallout: New Vegas.
 Git submodule at `cameraunlock-core/`, compiled into `HeadTracking.dll`. Our own code,
 MIT licensed, reproduced here so the notices are complete.
 
-- Pinned commit: `f441e29427b7422a584ba492dddd7788881804b0`
+- Pinned commit: `f92be69967d9a7afc9eba55dff8fea4ec55e064c`
 
 ```
 MIT License
@@ -74,23 +75,11 @@ redistributed.
 
 ## xNVSE (New Vegas Script Extender)
 
-xNVSE is the script extender that loads this mod as a plugin. It is a separate
-project by separate authors and it is **not redistributed by us in any form**.
+The root proxy does not require xNVSE. The DLL also accepts the NVSE plugin
+ABI for existing Steam installations. No xNVSE binary is bundled or downloaded
+by the release package.
 
 - Upstream: https://github.com/xNVSE/NVSE
-- Pinned version: 6.4.7 (recorded in `vendor/xnvse/README.md`, mirrored into
-  the CONFIG BLOCK of `scripts/install.cmd` and into `launcher-manifest.json`)
-
-**Licence status: none.** The upstream repository declares no licence: it
-contains no `LICENSE`, `COPYING`, or equivalent file, and the GitHub API
-reports its licence as null. Absent a grant, default copyright applies and we
-have no permission to redistribute it. We therefore do not, and this is the
-one loader in the catalogue that is deliberately not vendored:
-`scripts/install.cmd` and the launcher manifest download the pinned release
-directly from the authors' own GitHub release URL and verify its SHA-256
-before use. An xNVSE the user already installed is detected and left untouched.
-No xNVSE binary, source file, or archive is committed to this repository or
-placed in any ZIP we publish.
 
 **On `src/nvse_abi/`.** Those two headers are written by this project. They
 declare only what a plugin must state to be callable across the binary
@@ -113,9 +102,99 @@ unofficial, fan-made modification. It is not affiliated with, endorsed by, or
 sponsored by Obsidian Entertainment, Bethesda Softworks, or any other rights
 holder. It redistributes no game code, no game assets, and no proprietary
 DLLs, and it requires a legitimately purchased copy of the game. It contains
-no DRM circumvention and no licence-check bypass. The engine structure offsets
-and function addresses referenced in `src/game_offsets.h` and elsewhere in
-`src/` were derived by the authors through independent analysis of a
-legitimately owned copy. They are factual measurements recorded as numbers. No
-decompiled, disassembled, or otherwise reproduced game code is stored in this
-repository.
+no DRM circumvention and no licence-check bypass. The xNVSE, JIP LN NVSE and
+JohnnyGuitar NVSE public structure declarations are references for engine
+field layouts, first-person camera ownership and collision-query ABI declarations. This project's
+boundary code records those layouts without copying upstream implementations.
+
+- JIP LN NVSE: https://github.com/jazzisparis/JIP-LN-NVSE
+- JohnnyGuitar NVSE: https://github.com/carxt/JohnnyGuitarNVSE
+
+## MinHook
+
+Vendored by cameraunlock-core and statically linked, including its HDE decoder.
+
+```text
+﻿MinHook - The Minimalistic API Hooking Library for x64/x86
+Copyright (C) 2009-2017 Tsuda Kageyu.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER
+OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+================================================================================
+Portions of this software are Copyright (c) 2008-2009, Vyacheslav Patkov.
+================================================================================
+Hacker Disassembler Engine 32 C
+Copyright (c) 2008-2009, Vyacheslav Patkov.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+-------------------------------------------------------------------------------
+Hacker Disassembler Engine 64 C
+Copyright (c) 2008-2009, Vyacheslav Patkov.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+```

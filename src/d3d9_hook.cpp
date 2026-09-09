@@ -1,13 +1,17 @@
-// D3D9 Hook core - EndScene/BeginScene hook infrastructure
+// D3D9 frame presentation hook
 // Crosshair handling is in d3d9_crosshair.cpp
 // Culling hook is in d3d9_culling.cpp
 
 #include "d3d9_hook.h"
+#include "proxy_entry.h"
 #include "d3d9_internal.h"
 #include "camera_controller.h"
 #include "game_offsets.h"
 #include "debug_log.h"
 #include "window_centering.h"
+
+#include <MinHook.h>
+#include <cameraunlock/logging/file_log.h>
 
 #include <cstdio>
 #include <cstring>
@@ -18,28 +22,12 @@
 namespace HeadTracking {
 
 // Static member definitions
-void* D3D9Hook::s_originalEndScene = nullptr;
+void* D3D9Hook::s_originalPresent = nullptr;
 CameraController* D3D9Hook::s_cameraController = nullptr;
 bool D3D9Hook::s_fatalErrorFlag = false;
 
-// D3D9 vtable indices
-constexpr int BEGINSCENE_VTABLE_INDEX = 41;
-constexpr int ENDSCENE_VTABLE_INDEX = 42;
-// Function pointer types
-typedef HRESULT(STDMETHODCALLTYPE* BeginSceneFn)(IDirect3DDevice9* device);
-typedef HRESULT(STDMETHODCALLTYPE* EndSceneFn)(IDirect3DDevice9* device);
-
-// BeginScene hook for frame timing
-static void* s_originalBeginScene = nullptr;
-
-// High-precision frame tracking
-static LARGE_INTEGER s_lastFrameTime = {0};
-static LARGE_INTEGER s_perfFreq = {0};
-static double s_perfFreqRecipMs = 0.0;
-static bool s_perfInitialized = false;
-
-// Forward declarations
-HRESULT STDMETHODCALLTYPE HookedBeginScene(IDirect3DDevice9* device);
+constexpr int PRESENT_VTABLE_INDEX = 17;
+using PresentFn = HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*, const RECT*, const RECT*, HWND, const RGNDATA*);
 
 // NiTArray structure (from xNVSE)
 struct NiTArray {
@@ -114,7 +102,7 @@ void LogPlayerNodes() {
     static bool logged = false;
     if (logged) return;
 
-    uint8_t* player = *reinterpret_cast<uint8_t**>(GameOffsets::kPlayerBase);
+    uint8_t* player = *reinterpret_cast<uint8_t**>(GameOffsets::PlayerBase());
     if (!player) {
         HT_LOG_D3D("LogPlayerNodes: No player");
         return;
@@ -151,33 +139,13 @@ void LogPlayerNodes() {
 #endif
 }
 
-void* InstallJmpHook(void* targetAddr, void* hookFn, int hookSize) {
-    void* trampoline = VirtualAlloc(nullptr, 64, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-    if (!trampoline) {
-        HT_LOG_D3D("InstallJmpHook: Failed to allocate trampoline");
-        return nullptr;
+bool CreateHook(void* target, void* replacement, void** original) {
+    MH_STATUS status = MH_CreateHook(target, replacement, original);
+    if (status != MH_OK) {
+        cameraunlock::logging::Line("ERROR: MH_CreateHook(%p): %s", target, MH_StatusToString(status));
+        return false;
     }
-
-    // Copy original bytes into trampoline, then append JMP back to (targetAddr + hookSize)
-    uint8_t* trampolineBytes = static_cast<uint8_t*>(trampoline);
-    memcpy(trampolineBytes, targetAddr, hookSize);
-    trampolineBytes[hookSize] = 0xE9;
-    uintptr_t jumpBackTarget = reinterpret_cast<uintptr_t>(targetAddr) + hookSize;
-    int32_t jumpBackRel = static_cast<int32_t>(jumpBackTarget - reinterpret_cast<uintptr_t>(trampolineBytes + hookSize + 5));
-    memcpy(trampolineBytes + hookSize + 1, &jumpBackRel, 4);
-
-    // Write JMP from targetAddr to hookFn, NOP-pad the rest
-    uint8_t* target = static_cast<uint8_t*>(targetAddr);
-    target[0] = 0xE9;
-    uintptr_t hookTarget = reinterpret_cast<uintptr_t>(hookFn);
-    int32_t hookRel = static_cast<int32_t>(hookTarget - (reinterpret_cast<uintptr_t>(targetAddr) + 5));
-    memcpy(target + 1, &hookRel, 4);
-    for (int i = 5; i < hookSize; i++) {
-        target[i] = 0x90;
-    }
-
-    HT_LOG_D3D("InstallJmpHook: target=%p hook=%p trampoline=%p hookSize=%d", targetAddr, hookFn, trampoline, hookSize);
-    return trampoline;
+    return true;
 }
 
 }  // namespace D3D9Internal
@@ -197,6 +165,7 @@ D3D9Hook::D3D9Hook()
 }
 
 void D3D9Hook::SignalFatalError(const char* context) {
+    cameraunlock::logging::Line("FATAL: memory access failed in %s; head tracking disabled", context);
     s_fatalErrorFlag = true;
     Instance().m_fatalError = true;
     Instance().m_enabled = false;
@@ -214,7 +183,7 @@ bool D3D9Hook::Initialize() {
         return true;
     }
 
-    HT_LOG_D3D("D3D9Hook::Initialize - Starting (EndScene hook)");
+    HT_LOG_D3D("D3D9Hook::Initialize - Starting (Present hook)");
 
     WNDCLASSEXA wc = {};
     wc.cbSize = sizeof(WNDCLASSEXA);
@@ -281,73 +250,45 @@ bool D3D9Hook::Initialize() {
     void** vtable = *reinterpret_cast<void***>(tempDevice);
     HT_LOG_D3D("Device vtable at: %p", vtable);
 
-    void* endSceneAddr = vtable[ENDSCENE_VTABLE_INDEX];
-    HT_LOG_D3D("EndScene at vtable[%d] = %p", ENDSCENE_VTABLE_INDEX, endSceneAddr);
+    void* presentAddr = vtable[PRESENT_VTABLE_INDEX];
+    HT_LOG_D3D("Present at vtable[%d] = %p", PRESENT_VTABLE_INDEX, presentAddr);
 
-    s_originalEndScene = endSceneAddr;
-
-    DWORD oldProtect;
-    if (!VirtualProtect(endSceneAddr, 16, PAGE_EXECUTE_READWRITE, &oldProtect)) {
-        tempDevice->Release();
-        d3d9->Release();
-        DestroyWindow(tempWindow);
-        UnregisterClassA(wc.lpszClassName, wc.hInstance);
-        snprintf(m_lastError, sizeof(m_lastError), "VirtualProtect failed");
-        HT_LOG_D3D("ERROR: %s", m_lastError);
-        return false;
+    MH_STATUS status = MH_Initialize();
+    bool created = status == MH_OK || status == MH_ERROR_ALREADY_INITIALIZED;
+    if (!created) {
+        snprintf(m_lastError, sizeof(m_lastError), "MH_Initialize: %s", MH_StatusToString(status));
     }
-
-    constexpr int SCENE_HOOK_SIZE = 7;
-
-    s_originalEndScene = D3D9Internal::InstallJmpHook(endSceneAddr, reinterpret_cast<void*>(&HookedEndScene), SCENE_HOOK_SIZE);
-    if (!s_originalEndScene) {
-        VirtualProtect(endSceneAddr, 16, oldProtect, &oldProtect);
-        tempDevice->Release();
-        d3d9->Release();
-        DestroyWindow(tempWindow);
-        UnregisterClassA(wc.lpszClassName, wc.hInstance);
-        HT_LOG_D3D("ERROR: Failed to install EndScene hook");
-        return false;
+    if (created) {
+        created = D3D9Internal::CreateHook(presentAddr, reinterpret_cast<void*>(&HookedPresent), &s_originalPresent) &&
+                  D3D9Internal::InstallCullingHook() && D3D9Internal::InstallWeaponViewHook() &&
+                  D3D9Internal::InstallSkyViewHook();
     }
-
-    VirtualProtect(endSceneAddr, 16, oldProtect, &oldProtect);
-    FlushInstructionCache(GetCurrentProcess(), endSceneAddr, 16);
-    HT_LOG_D3D("EndScene hook installed at %p", endSceneAddr);
-
-    // Hook BeginScene for frame timing
-    void* beginSceneAddr = vtable[BEGINSCENE_VTABLE_INDEX];
-    HT_LOG_D3D("BeginScene at vtable[%d] = %p", BEGINSCENE_VTABLE_INDEX, beginSceneAddr);
-
-    if (!VirtualProtect(beginSceneAddr, 16, PAGE_EXECUTE_READWRITE, &oldProtect)) {
-        HT_LOG_D3D("WARNING: Could not hook BeginScene - VirtualProtect failed");
-    } else {
-        s_originalBeginScene = D3D9Internal::InstallJmpHook(beginSceneAddr, reinterpret_cast<void*>(&HookedBeginScene), SCENE_HOOK_SIZE);
-        VirtualProtect(beginSceneAddr, 16, oldProtect, &oldProtect);
-        FlushInstructionCache(GetCurrentProcess(), beginSceneAddr, 16);
-        if (s_originalBeginScene) {
-            HT_LOG_D3D("BeginScene hook installed at %p", beginSceneAddr);
-        }
-    }
-
-    m_hooked = true;
-    m_deviceVTable = vtable;
-
     tempDevice->Release();
     d3d9->Release();
     DestroyWindow(tempWindow);
     UnregisterClassA(wc.lpszClassName, wc.hInstance);
+    if (!created) {
+        MH_RemoveHook(presentAddr);
+        MH_RemoveHook(reinterpret_cast<void*>(ActiveProfile().calcCullingPlanes));
+        MH_RemoveHook(reinterpret_cast<void*>(ActiveProfile().renderAccumulator));
+        return false;
+    }
 
-    if (!D3D9Internal::InstallCullingHook()) {
-        HT_LOG_D3D("WARNING: Culling hook failed - objects may pop in at screen edges");
+    m_hooked = true;
+    m_deviceVTable = vtable;
+    status = MH_EnableHook(MH_ALL_HOOKS);
+    if (status != MH_OK) {
+        snprintf(m_lastError, sizeof(m_lastError), "MH_EnableHook: %s", MH_StatusToString(status));
+        return false;
     }
 
     m_initialized = true;
-    HT_LOG_D3D("D3D9Hook (EndScene + BeginScene + Culling) initialized successfully!");
+    HT_LOG_D3D("D3D9Hook (Present + Culling) initialized successfully!");
 
     return true;
 }
 
-// Cached backbuffer surface for HookedEndScene's "is this the swapchain backbuffer?"
+// Cached backbuffer surface for HookedPresent's "is this the swapchain backbuffer?"
 // gate. GetBackBuffer is a COM call that AddRefs every frame; storing the pointer
 // once (the swap chain keeps the surface alive across frames) lets us replace two
 // per-frame COM calls + Releases with one GetRenderTarget + a pointer compare.
@@ -375,8 +316,7 @@ void D3D9Hook::Shutdown() {
 }
 
 void D3D9Hook::ResetUICache() {
-    D3D9Internal::ResetCrosshairCache();
-    HT_LOG_D3D("UI cache reset - crosshair tile cleared (camera baseline preserved)");
+    D3D9Internal::ResetLeanClamp();
 }
 
 void D3D9Hook::SetCameraController(CameraController* controller) {
@@ -389,30 +329,10 @@ void D3D9Hook::SetEnabled(bool enabled) {
     HT_LOG_D3D("D3D9Hook enabled: %d", enabled);
 }
 
-HRESULT STDMETHODCALLTYPE HookedBeginScene(IDirect3DDevice9* device) {
-    if (!s_perfInitialized) {
-        QueryPerformanceFrequency(&s_perfFreq);
-        s_perfFreqRecipMs = 1000.0 / static_cast<double>(s_perfFreq.QuadPart);
-        QueryPerformanceCounter(&s_lastFrameTime);
-        s_perfInitialized = true;
-    }
-
-    LARGE_INTEGER now;
-    QueryPerformanceCounter(&now);
-    double elapsedMs = static_cast<double>(now.QuadPart - s_lastFrameTime.QuadPart) * s_perfFreqRecipMs;
-
-    if (elapsedMs >= 6.0) {
-        s_lastFrameTime = now;
-    }
-
-    BeginSceneFn original = reinterpret_cast<BeginSceneFn>(s_originalBeginScene);
-    return original(device);
-}
-
 constexpr float kTeleportDistSq = 500.0f * 500.0f;  // game units squared
 
 static void DetectTeleport() {
-    uint8_t** ppSceneGraph = reinterpret_cast<uint8_t**>(GameOffsets::kSceneGraphBase);
+    uint8_t** ppSceneGraph = reinterpret_cast<uint8_t**>(GameOffsets::SceneGraphBase());
     if (!ppSceneGraph || !*ppSceneGraph) {
         return;
     }
@@ -433,7 +353,7 @@ static void DetectTeleport() {
         float distSq = dx*dx + dy*dy + dz*dz;
         if (distSq > kTeleportDistSq) {
             HT_LOG_D3D("=== TELEPORT DETECTED! dist=%.1f ===", sqrtf(distSq));
-            D3D9Internal::ResetCrosshairCache();
+            D3D9Internal::ResetLeanClamp();
             D3D9Internal::g_crosshairDisabled = false;
         }
     }
@@ -444,113 +364,33 @@ static void DetectTeleport() {
     hasLastPos = true;
 }
 
-HRESULT STDMETHODCALLTYPE D3D9Hook::HookedEndScene(IDirect3DDevice9* device) {
+HRESULT STDMETHODCALLTYPE D3D9Hook::HookedPresent(IDirect3DDevice9* device, const RECT* source,
+    const RECT* destination, HWND window, const RGNDATA* dirtyRegion) {
     if (IsFatalErrorSet()) {
-        EndSceneFn original = reinterpret_cast<EndSceneFn>(s_originalEndScene);
-        return original(device);
+        const auto original = reinterpret_cast<PresentFn>(s_originalPresent);
+        return original(device, source, destination, window, dirtyRegion);
     }
+
 
     CenterWindowOnce(device);
 
-    static bool wasPaused = false;
-    static bool wasAiming = false;
-#if HEADTRACKING_DEBUG_LOGGING
-    static int callCount = 0;
-    callCount++;
-    bool shouldLog = (callCount <= 5 || callCount % 300 == 0);
-#endif
-
-    bool isPaused = D3D9Internal::IsGamePaused();
-    bool isAiming = D3D9Internal::IsPlayerAiming();
-
-#if HEADTRACKING_DEBUG_LOGGING
-    if (isAiming != wasAiming) {
-        float fovRatio = (D3D9Internal::g_normalFovX > 0.1f) ? (D3D9Internal::g_mainCameraTanFovX / D3D9Internal::g_normalFovX) : 0.0f;
-        HT_LOG_D3D("ADS state changed: wasAiming=%d isAiming=%d (FOV ratio=%.2f, current=%.3f, normal=%.3f)",
-               wasAiming, isAiming, fovRatio, D3D9Internal::g_mainCameraTanFovX, D3D9Internal::g_normalFovX);
-    }
-#endif
-
-    // Hoist the two trivial getters; they're called again in the main draw block
-    // below, so reading them into locals halves the member-access traffic.
-    bool controllerActive = s_cameraController && s_cameraController->IsDecoupled() && s_cameraController->IsActive();
-
-    if (isAiming && controllerActive) {
-        double yawOffset = s_cameraController->GetCurrentYawOffset();
-        double pitchOffset = s_cameraController->GetCurrentPitchOffset();
-
-        // Body follows head by INCREMENT, not by absolute offset. These writes
-        // accumulate into the player's rotation every frame, so applying the
-        // whole head offset each time integrates it: a head held 10 degrees off
-        // spins the body at roughly 600 deg/s at 60 fps. Track what has already
-        // been applied this ADS press and add only the difference. Reset on the
-        // entry edge so the first frame swings the body to where the head is
-        // looking, then it tracks.
-        static double appliedYaw = 0.0;
-        static double appliedPitch = 0.0;
-        if (!wasAiming) {
-            appliedYaw = 0.0;
-            appliedPitch = 0.0;
-        }
-
-        uint8_t* player = *reinterpret_cast<uint8_t**>(GameOffsets::kPlayerBase);
-        if (player) {
-            float* pRotZ = reinterpret_cast<float*>(player + GameOffsets::kPlayerRotZ);
-            float yawRad = static_cast<float>((yawOffset - appliedYaw) * kDegToRadF);
-            *pRotZ += yawRad;
-
-            float* pRotX = reinterpret_cast<float*>(player + GameOffsets::kPlayerRotX);
-            float pitchRad = static_cast<float>(-(pitchOffset - appliedPitch) * kDegToRadF);
-            *pRotX += pitchRad;
-
-            appliedYaw = yawOffset;
-            appliedPitch = pitchOffset;
-        }
-
-        if (!wasAiming) {
-            HT_LOG_D3D("ADS TRIGGERED - body follows head (yaw + pitch)");
-        }
-    }
-    wasAiming = isAiming;
-
-    if (isPaused != wasPaused) {
-        HT_LOG_D3D("Pause state changed: wasPaused=%d isPaused=%d", wasPaused, isPaused);
-    }
-
-    wasPaused = isPaused;
-
-#if HEADTRACKING_DEBUG_LOGGING
-    if (callCount == 100) {
-        D3D9Internal::LogPlayerNodes();
-    }
-#endif
-
+    const bool isPaused = D3D9Internal::IsGamePaused();
+    const bool isAiming = D3D9Internal::IsPlayerAiming();
+    const bool controllerActive = s_cameraController && s_cameraController->IsActive();
+    const bool adsMarker = controllerActive && s_cameraController->Ads().ShowMarker();
     D3D9Hook& hook = Instance();
-
-#if HEADTRACKING_DEBUG_LOGGING
-    if (shouldLog) {
-        HT_LOG_D3D("EndScene call %d, enabled=%d, controller=%p, isPaused=%d, isAiming=%d",
-               callCount, hook.m_enabled, s_cameraController, isPaused, isAiming);
-        if (s_cameraController) {
-            HT_LOG_D3D("  IsDecoupled=%d, IsActive=%d, yaw=%.2f, pitch=%.2f, crosshairDisabled=%d",
-                   s_cameraController->IsDecoupled(), s_cameraController->IsActive(),
-                   s_cameraController->GetCurrentYawOffset(), s_cameraController->GetCurrentPitchOffset(),
-                   D3D9Internal::g_crosshairDisabled);
-        }
-    }
-#endif
 
     if (hook.m_enabled && s_cameraController) {
         DetectTeleport();
 
         if (controllerActive) {
-            if (isPaused || isAiming) {
+            if (isPaused || (isAiming && !adsMarker)) {
                 if (D3D9Internal::g_crosshairDisabled) {
-                    D3D9Internal::SetCrosshairTileVisible(true);
+                    D3D9Internal::SetCrosshairTileVisible(!isAiming && !isPaused);
                     D3D9Internal::g_crosshairDisabled = false;
                     HT_LOG_D3D("Crosshair: showing stock (paused=%d, ADS=%d)", isPaused, isAiming);
                 }
-            } else if (D3D9Internal::g_reticleEnabled) {
+            } else if (adsMarker || D3D9Internal::g_reticleEnabled) {
                 if (!D3D9Internal::g_crosshairDisabled) {
                     D3D9Internal::SetCrosshairTileVisible(false);
                     D3D9Internal::g_crosshairDisabled = true;
@@ -580,7 +420,18 @@ HRESULT STDMETHODCALLTYPE D3D9Hook::HookedEndScene(IDirect3DDevice9* device) {
                             bool isBackBuffer = (renderTarget == s_cachedBackBuffer);
                             renderTarget->Release();
                             if (isBackBuffer) {
-                                D3D9Internal::DrawAimCrosshair(device, vp);
+                                const HRESULT begin = device->BeginScene();
+                                if (SUCCEEDED(begin)) {
+                                    D3D9Internal::DrawAimCrosshair(device, vp);
+                                    const HRESULT end = device->EndScene();
+                                    if (FAILED(end)) {
+                                        cameraunlock::logging::Line("ERROR: reticle EndScene failed: 0x%08lX", end);
+                                        SignalFatalError("reticle EndScene");
+                                    }
+                                } else if (begin != D3DERR_DEVICELOST) {
+                                    cameraunlock::logging::Line("ERROR: reticle BeginScene failed: 0x%08lX", begin);
+                                    SignalFatalError("reticle BeginScene");
+                                }
                             }
                         }
                     }
@@ -588,19 +439,23 @@ HRESULT STDMETHODCALLTYPE D3D9Hook::HookedEndScene(IDirect3DDevice9* device) {
             } else {
                 // Reticle disabled by user - restore stock crosshair
                 if (D3D9Internal::g_crosshairDisabled) {
-                    D3D9Internal::SetCrosshairTileVisible(true);
+                    D3D9Internal::SetCrosshairTileVisible(!isAiming && !isPaused);
                     D3D9Internal::g_crosshairDisabled = false;
                     HT_LOG_D3D("Crosshair: reticle user-disabled, restoring stock");
                 }
             }
         } else if (D3D9Internal::g_crosshairDisabled) {
-            D3D9Internal::SetCrosshairTileVisible(true);
+            D3D9Internal::SetCrosshairTileVisible(!isAiming && !isPaused);
             D3D9Internal::g_crosshairDisabled = false;
         }
     }
 
-    EndSceneFn original = reinterpret_cast<EndSceneFn>(s_originalEndScene);
-    return original(device);
+    // EndScene also runs between world passes; only Present ends the displayed frame.
+    D3D9Internal::RestoreCamera();
+    HeadTracking::Proxy::OnFrame();
+
+    const auto original = reinterpret_cast<PresentFn>(s_originalPresent);
+    return original(device, source, destination, window, dirtyRegion);
 }
 
 }  // namespace HeadTracking

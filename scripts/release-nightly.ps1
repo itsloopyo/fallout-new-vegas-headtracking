@@ -25,4 +25,5 @@ Publish-NightlyBuild `
     -ModName 'FalloutNVHeadTracking' `
     -Version $version `
     -ProjectRoot $ProjectRoot `
+    -NoNexusZip `
     -AllowDirty:$AllowDirty
