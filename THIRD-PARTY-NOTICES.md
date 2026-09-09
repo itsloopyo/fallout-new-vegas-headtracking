@@ -6,8 +6,8 @@ licence. Where a licence requires the copyright notice, the conditions and the
 disclaimer to accompany a binary distribution, the full text is reproduced here
 verbatim, and this file ships at the root of every release ZIP we publish.
 
-Nothing in this repository is derived from, or redistributes any part of,
-Fallout: New Vegas.
+This repository contains no game code, extracted game assets, game data files,
+or proprietary game DLLs.
 
 | Component | Version | Licence | How it ships |
 |-----------|---------|---------|--------------|
@@ -100,7 +100,7 @@ are used here only to identify the game this mod applies to, which is
 nominative use and not a claim of any right in them. This project is an
 unofficial, fan-made modification. It is not affiliated with, endorsed by, or
 sponsored by Obsidian Entertainment, Bethesda Softworks, or any other rights
-holder. It redistributes no game code, no game assets, and no proprietary
+holder. It redistributes no game code, no extracted game assets, and no proprietary
 DLLs, and it requires a legitimately purchased copy of the game. It contains
 no DRM circumvention and no licence-check bypass. The xNVSE, JIP LN NVSE and
 JohnnyGuitar NVSE public structure declarations are references for engine
@@ -115,7 +115,7 @@ boundary code records those layouts without copying upstream implementations.
 Vendored by cameraunlock-core and statically linked, including its HDE decoder.
 
 ```text
-﻿MinHook - The Minimalistic API Hooking Library for x64/x86
+MinHook - The Minimalistic API Hooking Library for x64/x86
 Copyright (C) 2009-2017 Tsuda Kageyu.
 All rights reserved.
 

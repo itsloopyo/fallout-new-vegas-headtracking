@@ -23,6 +23,7 @@ This mod loads through `dsound.dll` and does not require xNVSE.
 
 Install or update the package through [Lopari](https://lopari.app), then launch
 from Steam or the Xbox app as usual. Existing root-level configuration is preserved.
+In windowed mode, the game window is centred on its monitor's work area at startup.
 
 ### Manual installation
 
@@ -119,6 +120,10 @@ Page Up cycles full tracking, rotation only, then position only. Delete switches
 between horizon-locked yaw and camera-local yaw. Existing `YawModeKey=0x2D`
 settings move to Delete because Insert now owns ADS.
 
+The gold hip-fire reticle marks your mouse/controller aim as you move your head.
+Page Down turns it off and restores the game's centred hip-fire crosshair.
+The optional white ADS marker replaces the gold reticle while aiming.
+
 `Insert` / `Ctrl+Shift+U` cycles what happens when you aim down sights. All
 three ease the view onto the sight line when you raise the weapon:
 
@@ -139,13 +144,16 @@ weapon blends back to normal tracking over 250 ms. The choice is saved in
 ## Configuration
 
 `HeadTracking.ini` lives next to `FalloutNV.exe`. Changes are reloaded while
-running. See [the default configuration](config/HeadTracking.ini) for all keys.
+running, except `[Network] Port`, which requires a game restart.
+See [the default configuration](config/HeadTracking.ini) for all keys.
 
 `LocalSmoothing=0.0` and `RemoteSmoothing=0.15` under `[Smoothing]` select
 smoothing by connection source. Both cover rotation and position; zero disables
 smoothing. Configure sensitivity, deadzones, inversion and centring in your
 tracker. Old `[Sensitivity]`, `[Deadzone]` and `[Camera] Mode` entries are ignored.
 Head tracking changes the rendered view without writing player aim.
+Positional leaning is limited by the game's world collision to keep the camera
+away from walls.
 
 ## Troubleshooting
 
@@ -159,6 +167,12 @@ tracking. For an unsupported build, include the fingerprint line in a bug report
 
 If the view needs centring, use the centre control in your tracker. If yaw feels
 awkward at steep viewing angles, try Delete to switch yaw mode.
+
+### Known limitation
+
+Camera alignment for foliage and effects has improved, but occasional incorrect
+frames are still reported during head tracking. The intermittent flicker is not
+fully resolved.
 
 ## Updating and removing
 
