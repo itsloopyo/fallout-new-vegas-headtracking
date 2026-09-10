@@ -102,8 +102,6 @@ bool HeadTrackingPlugin::Initialize() {
 
     // Non-fatal: if the port is held by another head-tracker the receiver keeps
     // a background thread retrying the bind every 5s and recovers on its own.
-    // Aborting init here would make NVSE unload the plugin, so tracking could
-    // never come back without restarting the game.
     uint16_t udpPort = m_config->GetUdpPort();
     m_udpReceiver->Initialize(udpPort);
 

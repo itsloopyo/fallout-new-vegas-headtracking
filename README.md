@@ -213,7 +213,7 @@ Third-party notices ship in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 - [Obsidian Entertainment](https://www.obsidian.net/) - Fallout: New Vegas
 - [Bethesda Softworks](https://bethesda.net/) - publisher
-- [xNVSE Team](https://github.com/xNVSE/NVSE) - script extender
+- [xNVSE Team](https://github.com/xNVSE/NVSE) - plugin ABI and engine layout references
 - [OpenTrack](https://github.com/opentrack/opentrack) - head tracking software
 - [cameraunlock-core](https://github.com/itsloopyo/cameraunlock-core) - shared head tracking library
 

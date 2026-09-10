@@ -3,8 +3,7 @@
 #
 # The mod loads as dsound.dll next to FalloutNV.exe. The game imports exactly
 # one function from dsound (ordinal 11), which the DLL forwards to the system
-# copy; being loaded is the point. That works on Steam, GOG, Epic and Game Pass
-# alike, so there is one deployment shape and no store gets special treatment.
+# copy. Camera hooks require a supported executable profile.
 #
 # There is no script extender in this path. Nothing is written to
 # Data\NVSE\Plugins and nothing downloads xNVSE.

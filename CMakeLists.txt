@@ -134,7 +134,7 @@ source_group("NVSE ABI" FILES ${NVSE_ABI_HEADERS})
 
 # Print configuration summary
 message(STATUS "")
-message(STATUS "HeadTracking NVSE Plugin Configuration:")
+message(STATUS "HeadTracking dsound.dll Proxy Configuration:")
 message(STATUS "  Version: ${PROJECT_VERSION}")
 message(STATUS "  C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")

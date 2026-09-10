@@ -7,7 +7,7 @@
 .DESCRIPTION
     This script:
     1. Updates version in version.h
-    2. Builds release and copies DLL to prebuilt/
+    2. Builds, tests and packages the release
     3. Generates CHANGELOG from commits
     4. Commits all changes
     5. Creates and pushes an annotated git tag to trigger CI release
@@ -52,7 +52,6 @@ if ($LASTEXITCODE -ne 0) {
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectDir = Split-Path -Parent $scriptDir
 $versionHeader = Join-Path $projectDir "src\version.h"
-$installCmdPath = Join-Path $projectDir "scripts\install.cmd"
 
 Import-Module (Join-Path $projectDir "cameraunlock-core\powershell\ReleaseWorkflow.psm1") -Force
 
@@ -159,8 +158,7 @@ if ($currentBranch -ne "main") {
     exit 1
 }
 
-# Check for uncommitted changes (prebuilt/ is excluded since the release overwrites it)
-$status = git status --porcelain -- ':!prebuilt/'
+$status = git status --porcelain
 if ($status) {
     Write-Host "Error: Working directory has uncommitted changes" -ForegroundColor Red
     Write-Host $status -ForegroundColor Gray
@@ -200,9 +198,11 @@ if (-not $hasExistingTags) {
             ArtifactPaths = @(
                 "src/"
                 "cameraunlock-core"
-                "scripts/install.cmd"
-                "scripts/uninstall.cmd"
-                "prebuilt/"
+                "config/"
+                "launcher-manifest.json"
+                "CMakeLists.txt"
+                "pixi.toml"
+                "scripts/"
             )
         }
         New-ChangelogFromCommits @changelogArgs
@@ -221,36 +221,20 @@ if (-not $hasExistingTags) {
 Write-Host "Updating version to $Version..." -ForegroundColor Cyan
 Set-Version $Version
 
-# install.cmd's MOD_VERSION is what the install writes into the launcher's
-# state file, which is where the launcher looks to spot a stale install.
-$installCmdContent = Get-Content $installCmdPath -Raw
-if ($installCmdContent -notmatch 'set "MOD_VERSION=[^"]+"') { throw "MOD_VERSION line not found in $installCmdPath" }
-$installCmdContent = $installCmdContent -replace 'set "MOD_VERSION=[^"]+"', "set `"MOD_VERSION=$Version`""
-Set-Content $installCmdPath $installCmdContent -NoNewline
-
-# Step 3: Build and update prebuilt DLL
-Write-Host "Building release..." -ForegroundColor Cyan
+Write-Host "Packaging release..." -ForegroundColor Cyan
 Push-Location $projectDir
-cmake --build build --config Release
+pixi run package
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "Build failed!" -ForegroundColor Red
+    Write-Host "Packaging failed!" -ForegroundColor Red
     Pop-Location
     exit 1
 }
 
-$prebuiltDir = Join-Path $projectDir "prebuilt"
-if (-not (Test-Path $prebuiltDir)) {
-    New-Item -ItemType Directory -Path $prebuiltDir -Force | Out-Null
-}
-Copy-Item "build/bin/Release/HeadTracking.dll" $prebuiltDir -Force
-Write-Host "  Updated prebuilt DLL" -ForegroundColor Gray
 Pop-Location
 
 # Step 4: Commit
 Write-Host "Committing changes..." -ForegroundColor Cyan
 git add $versionHeader
-git add $installCmdPath
-git add "$projectDir/prebuilt"
 git add $changelogPath
 git commit -m "Release v$Version"
 if ($LASTEXITCODE -ne 0) {

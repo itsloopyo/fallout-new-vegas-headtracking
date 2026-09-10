@@ -22,15 +22,6 @@ build-release = { cmd = "cmake --build build --config Release", depends-on = ["s
 # Build and deploy to every install of the game on this machine (release)
 install = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 Release", depends-on = ["build-release"] }
 
-# Remove mod from every install of the game on this machine. uninstall.cmd
-# itself stays single-target: it is the launcher contract, and the launcher
-# passes the one path it means.
-uninstall = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/uninstall-all.ps1" }
-
-# Bump vendored mod-loader copies to latest upstream within pinned range.
-# Manual; commit the result. CI does not run this.
-update-deps = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/update-deps.ps1" }
-
 test = { cmd = "ctest --test-dir build -C Release --output-on-failure", depends-on = ["build-release"] }
 
 # Package release ZIP
@@ -45,9 +36,6 @@ clean = { cmd = """
 clean-all = { cmd = """
     powershell -Command "if (Test-Path 'build') { Remove-Item 'build' -Recurse -Force }; if (Test-Path 'release') { Remove-Item 'release' -Recurse -Force }; Write-Host 'All build artifacts cleaned' -ForegroundColor Green"
 """ }
-
-# Remove mod and revert to vanilla game (for testing if crashes are mod-related)
-vanilla = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/vanilla.ps1" }
 
 # Skip intro videos / chargen narration for fast debug launches. Reversible.
 fast-launch = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/fast-launch.ps1" }

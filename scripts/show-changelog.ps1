@@ -22,9 +22,11 @@ Import-Module (Join-Path $projectDir "cameraunlock-core\powershell\ReleaseWorkfl
 $artifactPaths = @(
     "src/"
     "cameraunlock-core"
-    "scripts/install.cmd"
-    "scripts/uninstall.cmd"
-    "prebuilt/"
+    "config/"
+    "launcher-manifest.json"
+    "CMakeLists.txt"
+    "pixi.toml"
+    "scripts/"
 )
 
 # Get commits since last tag

@@ -166,7 +166,6 @@ void HotkeyHandler::ShowFeedback(const char* message) {
         return;
     }
 
-    // Print to NVSE console
     if (g_ConsolePrint) {
         g_ConsolePrint("HeadTracking: %s", message);
     }

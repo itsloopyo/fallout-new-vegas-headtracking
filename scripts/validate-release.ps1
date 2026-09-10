@@ -1,4 +1,4 @@
-# Validate release readiness for HeadTracking NVSE plugin
+# Validate release readiness for HeadTracking
 # Checks version consistency, changelog, and build status
 
 $ErrorActionPreference = "Stop"

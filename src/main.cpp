@@ -1,5 +1,4 @@
-// FNV Head Tracking NVSE Plugin
-// Main entry point for NVSE plugin system
+// DLL lifecycle and legacy NVSE compatibility entry points.
 
 #include <Windows.h>
 
