@@ -27,10 +27,21 @@ In windowed mode, the game window is centred on its monitor's work area at start
 
 ### Manual installation
 
-Use the `-installer.zip` from the release:
+Download the `-installer.zip` from the release, extract it anywhere, and run
+`install.cmd`. It finds the game, backs up any `dsound.dll` already beside
+`FalloutNV.exe`, deploys the mod under that name, and writes `HeadTracking.ini`
+only if you do not have one. `uninstall.cmd` reverses it and puts your backup
+back. Both accept the game folder as an argument if detection picks the wrong
+copy:
 
-1. Copy `plugins/HeadTracking.dll` next to `FalloutNV.exe`, renaming it to
-   `dsound.dll`. Keep a backup if another mod already owns that filename.
+```
+install.cmd "D:\Games\Fallout New Vegas"
+```
+
+To place the files yourself instead:
+
+1. Copy `plugins/dsound.dll` next to `FalloutNV.exe`. Keep a backup if another
+   mod already owns that filename.
 2. Copy `plugins/HeadTracking.ini` to the same directory if you do not already
    have a `HeadTracking.ini` there.
 3. For an upgrade from the NVSE version, copy your old
@@ -176,10 +187,13 @@ fully resolved.
 
 ## Updating and removing
 
-Use Lopari to update or remove its installed package. For a manual install,
-replace the DLL to update; remove this mod's `dsound.dll` to uninstall and restore
-any DLL you backed up. Retain your INI for later use. Remove the compatibility
-`Data/NVSE/Plugins/HeadTracking.dll` too if present. Other mods may still need xNVSE.
+Use Lopari to update or remove its installed package. For a manual install, run
+`install.cmd` again to update, and `uninstall.cmd` to remove: it takes out this
+mod's `dsound.dll`, restores any DLL it backed up, and removes `HeadTracking.ini`
+and the logs. If you placed the files by hand, remove them the same way, and
+remove the compatibility `Data/NVSE/Plugins/HeadTracking.dll` too if present.
+Keep a copy of your INI if you want your settings back later. Other mods may
+still need xNVSE.
 
 ## Building from source
 

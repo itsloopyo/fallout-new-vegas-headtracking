@@ -22,6 +22,9 @@ build-release = { cmd = "cmake --build build --config Release", depends-on = ["s
 # Build and deploy to every install of the game on this machine (release)
 install = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 Release", depends-on = ["build-release"] }
 
+# Remove the mod from every install of the game on this machine
+uninstall = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/uninstall-all.ps1" }
+
 test = { cmd = "ctest --test-dir build -C Release --output-on-failure", depends-on = ["build-release"] }
 
 # Package release ZIP

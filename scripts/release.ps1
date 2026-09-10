@@ -52,6 +52,7 @@ if ($LASTEXITCODE -ne 0) {
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectDir = Split-Path -Parent $scriptDir
 $versionHeader = Join-Path $projectDir "src\version.h"
+$installCmdPath = Join-Path $projectDir "scripts\install.cmd"
 
 Import-Module (Join-Path $projectDir "cameraunlock-core\powershell\ReleaseWorkflow.psm1") -Force
 
@@ -220,6 +221,13 @@ if (-not $hasExistingTags) {
 # Step 2: Update version
 Write-Host "Updating version to $Version..." -ForegroundColor Cyan
 Set-Version $Version
+
+# install.cmd's MOD_VERSION is what a hand install writes into the launcher's
+# state file, which is where the launcher looks to spot a stale install.
+$installCmdContent = Get-Content $installCmdPath -Raw
+if ($installCmdContent -notmatch 'set "MOD_VERSION=[^"]+"') { throw "MOD_VERSION line not found in $installCmdPath" }
+$installCmdContent = $installCmdContent -replace 'set "MOD_VERSION=[^"]+"', "set `"MOD_VERSION=$Version`""
+Set-Content $installCmdPath $installCmdContent -NoNewline
 
 Write-Host "Packaging release..." -ForegroundColor Cyan
 Push-Location $projectDir

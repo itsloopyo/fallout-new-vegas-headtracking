@@ -1,6 +1,11 @@
 #Requires -Version 5.1
 # The proxy must land beside FalloutNV.exe. A Data-only mod-manager archive
 # cannot load it, so this package produces an installer ZIP only.
+#
+# Lopari installs from launcher-manifest.json and needs nothing else here.
+# install.cmd / uninstall.cmd still ship for users installing by hand from the
+# GitHub release: the payload is a DLL that has to land under a system DLL's
+# name, which is not something to leave a player to do with Explorer.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -14,7 +19,10 @@ $parts = foreach ($part in @('MAJOR', 'MINOR', 'PATCH')) {
 $version = $parts -join '.'
 $stagingDir = Join-Path $releaseDir ('staging-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path (Join-Path $stagingDir 'plugins') -Force | Out-Null
-Copy-Item -LiteralPath (Join-Path $projectRoot 'build/bin/Release/HeadTracking.dll') -Destination (Join-Path $stagingDir 'plugins')
+# Named for the export the game resolves, not for the project. install.cmd's
+# shim body copies MOD_DLLS by name, and the manifest deploys plugins/dsound.dll
+# to the same place, so both routes deliver one identical file.
+Copy-Item -LiteralPath (Join-Path $projectRoot 'build/bin/Release/HeadTracking.dll') -Destination (Join-Path $stagingDir 'plugins/dsound.dll')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'config/HeadTracking.ini') -Destination (Join-Path $stagingDir 'plugins')
 $manifest = Get-Content (Join-Path $projectRoot 'launcher-manifest.json') -Raw | ConvertFrom-Json
 $manifest.mod_info.version = $version
@@ -32,6 +40,13 @@ $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $stag
 foreach ($doc in @('README.md', 'CHANGELOG.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md')) {
     Copy-Item -LiteralPath (Join-Path $projectRoot $doc) -Destination $stagingDir
 }
+foreach ($script in @('install.cmd', 'uninstall.cmd')) {
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot $script) -Destination $stagingDir
+}
+# install.cmd is a thin wrapper; shared/ carries the body it calls, find-game.ps1
+# and games.json. Without it a hand-installer gets "installer ZIP is corrupt".
+Import-Module (Join-Path $projectRoot 'cameraunlock-core/powershell/ReleaseWorkflow.psm1') -Force
+Copy-SharedBundle -StagingDir $stagingDir
 $zip = Join-Path $releaseDir "FalloutNVHeadTracking-v$version-installer.zip"
 Compress-Archive -Path (Join-Path $stagingDir '*') -DestinationPath $zip -Force
 $resolvedStaging = (Resolve-Path -LiteralPath $stagingDir).Path

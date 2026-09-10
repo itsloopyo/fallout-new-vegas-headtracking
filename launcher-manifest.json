@@ -19,12 +19,12 @@
   },
   "files": [
     {
-      "source": "plugins/HeadTracking.dll",
+      "source": "plugins/dsound.dll",
       "target": "dsound.dll",
       "backup": true
     },
     {
-      "source": "plugins/HeadTracking.dll",
+      "source": "plugins/dsound.dll",
       "target": "Data/NVSE/Plugins/HeadTracking.dll"
     }
   ],
