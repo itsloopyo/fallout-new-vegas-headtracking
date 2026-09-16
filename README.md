@@ -21,8 +21,12 @@ This mod loads through `dsound.dll` and does not require xNVSE.
 
 ## Installation
 
-Install or update the package through [Lopari](https://lopari.app), then launch
-from Steam or the Xbox app as usual. Existing root-level configuration is preserved.
+### Lopari
+
+Download [Lopari](https://lopari.app), choose **Fallout: New Vegas**, and click
+**Play with head tracking**.
+
+Existing root-level configuration is preserved.
 In windowed mode, the game window is centred on its monitor's work area at startup.
 
 ### Manual installation

@@ -14,20 +14,22 @@ class GameState;
 //   End       = toggle tracking
 //   Page Up   = cycle tracking mode (normal -> rot only -> pos only -> normal)
 //   Page Down = reticle toggle
+//   Insert    = cycle ADS mode (fixed, see hotkey_handler.cpp)
+//   Delete    = yaw mode
 constexpr int VK_TOGGLE_DEFAULT = VK_END;                   // 0x23
 constexpr int VK_CYCLE_TRACKING_MODE_DEFAULT = VK_PRIOR;    // 0x21 (Page Up)
 constexpr int VK_RETICLE_TOGGLE_DEFAULT = VK_NEXT;          // 0x22 (Page Down)
-// Page Down is taken by the reticle toggle in this mod, so the yaw-mode
-// toggle uses the next free nav-cluster key (Insert) instead of the
+// Page Down is the reticle toggle here and Insert is the ADS cycle, so the
+// yaw-mode toggle takes the next free nav-cluster key rather than the
 // catalogue-standard Page Down.
-constexpr int VK_YAW_MODE_DEFAULT = VK_DELETE;              // 0x2D
+constexpr int VK_YAW_MODE_DEFAULT = VK_DELETE;              // 0x2E
 
 // Fixed Ctrl+Shift+<letter> chord letters, drawn from the T/Y/U/G/H/J cluster.
 // Slot order across all CameraUnlock mods: Y, G, H, U, J.
 constexpr int VK_CHORD_TOGGLE = 'Y';                // 0x59
 constexpr int VK_CHORD_CYCLE_TRACKING_MODE = 'G';   // 0x47
 constexpr int VK_CHORD_RETICLE_TOGGLE = 'H';        // 0x48
-constexpr int VK_CHORD_YAW_MODE = 'J';              // 0x55
+constexpr int VK_CHORD_YAW_MODE = 'J';              // 0x4A
 
 // Key state tracking to detect press events (not hold)
 struct KeyState {

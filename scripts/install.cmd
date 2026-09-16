@@ -25,7 +25,7 @@ set "MOD_DISPLAY_NAME=Fallout: New Vegas Head Tracking"
 :: backs up any dsound.dll already there before writing ours over it.
 set "MOD_DLLS=dsound.dll"
 set "MOD_INTERNAL_NAME=FalloutNVHeadTracking"
-set "MOD_VERSION=0.0.0"
+set "MOD_VERSION=0.3.0"
 set "STATE_FILE=.headtracking-state.json"
 set "FRAMEWORK_TYPE=None"
 set "SHIM_MARKER=FNV Head Tracking v"
