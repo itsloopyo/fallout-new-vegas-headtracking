@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.1] - 2026-09-16
+
+### Added
+
+- load through a dsound proxy and track while aiming
+- install and remove the proxy with install.cmd
+
+### Fixed
+
+- correct the MIT text, ship notices in both ZIPs, retitle the NVSE ABI headers
+- mirror the vertical limit and restore the MIT grant
+- re-sync THIRD-PARTY-NOTICES.md before cutting the tag
+- seed the config instead of deploying it
+- rewrite install.cmd MOD_VERSION from the canonical version
+- remove obsolete NVSE installation tooling
+- preserve originals across shim upgrades and uninstall failures
+
 ## [Unreleased]
 
 ### Added

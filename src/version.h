@@ -7,7 +7,7 @@ namespace HeadTracking {
 // Version components for scripts/packaging
 constexpr int VERSION_MAJOR = 0;
 constexpr int VERSION_MINOR = 3;
-constexpr int VERSION_PATCH = 0;
+constexpr int VERSION_PATCH = 1;
 
 // Packed version for NVSE (major.minor.patch.0)
 constexpr uint32_t PLUGIN_VERSION = (VERSION_MAJOR << 24) | (VERSION_MINOR << 16) | (VERSION_PATCH << 8);
