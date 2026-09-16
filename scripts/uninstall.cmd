@@ -22,6 +22,7 @@ set "STATE_FILE=.headtracking-state.json"
 :: BepInEx | MelonLoader | MonoCecil | ASILoader | REFramework | UE4SS | xNVSE
 :: | BeamNGUserMods | None
 set "FRAMEWORK_TYPE=None"
+set "SHIM_MARKER=FNV Head Tracking v"
 :: DLL names shipped by older versions of this mod, removed too so an upgrade
 :: does not leave a second copy for the loader to bind.
 set "LEGACY_DLLS="

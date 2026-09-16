@@ -11,7 +11,7 @@ or proprietary game DLLs.
 
 | Component | Version | Licence | How it ships |
 |-----------|---------|---------|--------------|
-| cameraunlock-core | f92be69967d9a7afc9eba55dff8fea4ec55e064c | MIT | Compiled into `HeadTracking.dll` |
+| cameraunlock-core | c480d8a8177753966a7d33b857f1db12f5e9fe39 | MIT | Compiled into `HeadTracking.dll` |
 | MinHook | 1.3.4 | BSD-2-Clause | Compiled into `HeadTracking.dll` |
 | OpenTrack | n/a | ISC | Not bundled; UDP protocol interoperability only |
 
@@ -22,7 +22,7 @@ or proprietary game DLLs.
 Git submodule at `cameraunlock-core/`, compiled into `HeadTracking.dll`. Our own code,
 MIT licensed, reproduced here so the notices are complete.
 
-- Pinned commit: `f92be69967d9a7afc9eba55dff8fea4ec55e064c`
+- Pinned commit: `c480d8a8177753966a7d33b857f1db12f5e9fe39`
 
 ```
 MIT License
