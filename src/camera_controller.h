@@ -3,7 +3,6 @@
 #include <Windows.h>
 
 #include "tracking_data.h"
-#include "ads.h"
 
 #include <cstdint>
 
@@ -14,7 +13,6 @@ public:
     CameraController();
     ~CameraController();
 
-    AdsState& Ads() { return m_ads; }
     void ResetTracking();
     void SetRotationEnabled(bool enabled) { m_rotationEnabled = enabled; }
 
@@ -66,7 +64,6 @@ public:
     bool IsActive() const { return m_enabled && m_hasTrackingData; }
 
 private:
-    AdsState m_ads;
     bool m_rotationEnabled = true;
 
     // State

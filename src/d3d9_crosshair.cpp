@@ -6,12 +6,7 @@
 #include "debug_log.h"
 #include "build_profile.h"
 #include "nvse_abi/GameAPI.h"
-#include "camera_controller.h"
 #include <cameraunlock/logging/file_log.h>
-// Present is already owned here; use the shared primitives without another hook.
-#define CAMERAUNLOCK_DX9_OVERLAY_IMPLEMENTATION
-#include <cameraunlock/rendering/dx9_overlay.h>
-#include <cameraunlock/rendering/aim_marker.h>
 
 #include <cstring>
 #include <cmath>
@@ -96,8 +91,6 @@ void DrawAimCrosshair(IDirect3DDevice9* device, const D3DVIEWPORT9& vp) {
 
     if (!std::isfinite(normalizedX) || !std::isfinite(normalizedY) ||
         std::fabs(normalizedX) > 1.0f || std::fabs(normalizedY) > 1.0f) return;
-    auto* controller = D3D9Hook::GetCameraController();
-    const bool adsMarker = controller->Ads().ShowMarker();
 
     float screenX = vp.X + vp.Width / 2.0f + normalizedX * (vp.Width / 2.0f);
     float screenY = vp.Y + vp.Height / 2.0f + normalizedY * (vp.Height / 2.0f);
@@ -170,25 +163,8 @@ void DrawAimCrosshair(IDirect3DDevice9* device, const D3DVIEWPORT9& vp) {
     device->SetRenderState(D3DRS_CLIPPING, FALSE);
     device->SetPixelShader(nullptr);
     device->SetVertexShader(nullptr);
-    device->SetRenderState(D3DRS_ALPHABLENDENABLE, adsMarker ? TRUE : FALSE);
-    device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-    device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
-    device->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
-    device->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, FALSE);
-
-    if (adsMarker) {
-        const cameraunlock::rendering::AimMarkerStyle style;
-        cameraunlock::rendering::DX9DrawContext draw(static_cast<float>(vp.Width), static_cast<float>(vp.Height));
-        draw.DrawCross(screenX, screenY, style.arm_pixels + 1.0f, style.outline,
-            style.thickness_pixels + 2.0f, style.gap_pixels - 1.0f);
-        draw.DrawCross(screenX, screenY, style.arm_pixels, style.ink,
-            style.thickness_pixels, style.gap_pixels);
-        const auto& vertices = draw.TriVerts();
-        device->DrawPrimitiveUP(D3DPT_TRIANGLELIST, static_cast<UINT>(vertices.size() / 3),
-            vertices.data(), sizeof(cameraunlock::rendering::DX9OverlayVertex));
-    } else {
-        device->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 8, allVerts, sizeof(Vertex));
-    }
+    device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+    device->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 8, allVerts, sizeof(Vertex));
 
     g_cachedStateBlock->Apply();
 }

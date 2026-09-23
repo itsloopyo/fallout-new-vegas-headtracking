@@ -14,14 +14,12 @@ class GameState;
 //   End       = toggle tracking
 //   Page Up   = cycle tracking mode (normal -> rot only -> pos only -> normal)
 //   Page Down = reticle toggle
-//   Insert    = cycle ADS mode (fixed, see hotkey_handler.cpp)
 //   Delete    = yaw mode
 constexpr int VK_TOGGLE_DEFAULT = VK_END;                   // 0x23
 constexpr int VK_CYCLE_TRACKING_MODE_DEFAULT = VK_PRIOR;    // 0x21 (Page Up)
 constexpr int VK_RETICLE_TOGGLE_DEFAULT = VK_NEXT;          // 0x22 (Page Down)
-// Page Down is the reticle toggle here and Insert is the ADS cycle, so the
-// yaw-mode toggle takes the next free nav-cluster key rather than the
-// catalogue-standard Page Down.
+// Page Down is the reticle toggle here, so the yaw-mode toggle takes Delete
+// rather than the catalogue-standard Page Down.
 constexpr int VK_YAW_MODE_DEFAULT = VK_DELETE;              // 0x2E
 
 // Fixed Ctrl+Shift+<letter> chord letters, drawn from the T/Y/U/G/H/J cluster.
@@ -61,7 +59,6 @@ enum class HotkeyAction {
     Toggle,              // Toggle head tracking on/off
     CycleTrackingMode,   // Cycle: normal -> rotation-only -> position-only -> normal
     ReticleToggle,       // Toggle aim reticle on/off
-    CycleAdsMode,
     ToggleYawMode        // Toggle world-space (horizon-locked) vs camera-local yaw
 };
 
@@ -134,7 +131,6 @@ private:
     KeyState m_cycleTrackingModeKeyState;
     KeyState m_reticleToggleKeyState;
     KeyState m_yawModeKeyState;
-    KeyState m_adsKeyState;
 
     // Enabled state
     bool m_enabled;

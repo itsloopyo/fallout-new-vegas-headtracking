@@ -28,10 +28,9 @@ void __cdecl RenderWeaponView(void* camera, void* accumulator, uint32_t flags) {
     const auto now = GetTickCount64();
     if (now - lastLog >= 1000) {
         lastLog = now;
-        cameraunlock::logging::Line("WeaponView: lens=(%.3f,%.3f) world=(%.3f,%.3f) relative=(%.3f,%.3f,%.3f) offset=(%.3f,%.3f,%.3f)",
+        cameraunlock::logging::Line("WeaponView: lens=(%.3f,%.3f) world=(%.3f,%.3f) relative=(%.3f,%.3f,%.3f)",
             frustum[1],frustum[2],g_weaponView.tanX,g_weaponView.tanY,
-            g_weaponView.rotation[0],g_weaponView.rotation[1],g_weaponView.rotation[2],
-            g_weaponView.translation[0],g_weaponView.translation[1],g_weaponView.translation[2]);
+            g_weaponView.rotation[0],g_weaponView.rotation[1],g_weaponView.rotation[2]);
     }
     original(camera, accumulator, flags);
     std::memcpy(transform, saved, sizeof(saved));

@@ -35,7 +35,7 @@ set "SHIM_MARKER=FNV Head Tracking v"
 :: every update and then records the tuned file as the game original.
 set "MOD_SEED_FILES=HeadTracking.ini"
 :: Post-install help text. `&echo ` starts each further line.
-set "MOD_CONTROLS=Controls (nav cluster / chord):&echo   End      / Ctrl+Shift+Y  Toggle head tracking&echo   PageUp   / Ctrl+Shift+G  Cycle tracking mode&echo   PageDown / Ctrl+Shift+H  Toggle the aim reticle&echo   Delete   / Ctrl+Shift+J  Toggle yaw mode&echo   Insert   / Ctrl+Shift+U  Cycle what happens while aiming"
+set "MOD_CONTROLS=Controls (nav cluster / chord):&echo   End      / Ctrl+Shift+Y  Toggle head tracking&echo   PageUp   / Ctrl+Shift+G  Cycle tracking mode&echo   PageDown / Ctrl+Shift+H  Toggle the aim reticle&echo   Delete   / Ctrl+Shift+J  Toggle yaw mode"
 :: --- END CONFIG BLOCK ---
 
 :: Pin delayed expansion off before `%*` is expanded on the `call` below.

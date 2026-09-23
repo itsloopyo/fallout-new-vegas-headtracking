@@ -170,6 +170,5 @@ void CameraController::ResetTracking() {
     m_hasTrackingData = false;
     m_smoothedYaw = m_smoothedPitch = m_smoothedRoll = 0.0;
     m_posX = m_posY = m_posZ = 0.0f;
-    m_ads.Reset();
 }
 }

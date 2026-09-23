@@ -1,6 +1,4 @@
 #include <Windows.h>
-#include <cameraunlock/config/config_key_schema.g.h>
-#include <stdexcept>
 
 #include "config.h"
 #include "plugin.h"
@@ -146,28 +144,6 @@ bool Config::Load(const std::string& iniPath) {
     m_cycleTrackingModeKey = m_ini.ReadHex("Hotkeys", "CycleTrackingMode", DEFAULT_CYCLE_TRACKING_MODE_KEY);
     m_reticleToggleKey = m_ini.ReadHex("Hotkeys", "ReticleToggle", DEFAULT_RETICLE_TOGGLE_KEY);
     m_yawModeKey = m_ini.ReadHex("Hotkeys", "YawModeKey", DEFAULT_YAW_MODE_KEY);
-    if (m_yawModeKey == VK_INSERT) {
-        ConfigDiag("WARNING", "Insert now cycles ADS mode; yaw mode moved to Delete / Ctrl+Shift+J");
-        m_yawModeKey = VK_DELETE;
-    }
-    char entries[4096] = {};
-    const DWORD count = GetPrivateProfileSectionA("Camera", entries, sizeof(entries), m_iniPath.c_str());
-    if (count >= sizeof(entries) - 2) {
-        ConfigDiag("ERROR", "[Camera] section exceeds 4094 bytes");
-        return false;
-    }
-    m_adsMode = cameraunlock::ads::kDefaultAdsMode;
-    m_adsModeKey = "ads_mode";
-    for (const char* entry = entries; *entry; entry += strlen(entry) + 1) {
-        const std::string line(entry);
-        const size_t equals = line.find('=');
-        const char* key = cameraunlock::ResolveConfigKey(line.substr(0, equals));
-        if (key && std::string(key) == cameraunlock::config_keys::kAdsMode && equals != std::string::npos) {
-            const std::string value = line.substr(equals + 1);
-            m_adsMode = cameraunlock::ads::ParseAdsMode(value.c_str());
-            m_adsModeKey = line.substr(0, equals);
-        }
-    }
     m_debounceMs = static_cast<uint64_t>(m_ini.ReadInt("Hotkeys", "DebounceMs", static_cast<int>(DEFAULT_DEBOUNCE_MS)));
 
     // GameState section
@@ -281,7 +257,6 @@ bool Config::ApplyToComponents(CameraController* camera, HotkeyHandler* hotkey,
         camera->SetLocalSmoothing(m_localSmoothing);
         camera->SetRemoteSmoothing(m_remoteSmoothing);
         camera->SetWorldSpaceYaw(m_worldSpaceYaw);
-        camera->Ads().SetMode(m_adsMode);
     }
 
     // Apply to hotkey handler - FAIL FAST if key codes are invalid
@@ -350,7 +325,7 @@ bool Config::CreateDefaultConfig() {
     file << "[Hotkeys]\n";
     file << "; Nav-cluster virtual key codes (hex). Each action also accepts a\n";
     file << "; fixed Ctrl+Shift+<letter> chord (Y/G/H/J) which is not configurable.\n";
-    file << "; End=0x23, PageUp=0x21, PageDown=0x22, Delete=0x2E; Insert cycles ADS\n";
+    file << "; End=0x23, PageUp=0x21, PageDown=0x22, Delete=0x2E\n";
     file << "Toggle=0x23\n";
     file << "CycleTrackingMode=0x21\n";
     file << "ReticleToggle=0x22\n";
@@ -371,20 +346,9 @@ bool Config::CreateDefaultConfig() {
     file << "[Camera]\n";
     file << "; WorldSpaceYaw: 1 = horizon-locked yaw (default), 0 = camera-local\n";
     file << "WorldSpaceYaw=1\n";
-    file << "; Insert / Ctrl+Shift+U: paused, marker, tracked\n";
-    file << "ads_mode=paused\n";
 
     file.close();
     return true;
 }
 
 }  // namespace HeadTracking
-
-namespace HeadTracking {
-void Config::SetAdsMode(cameraunlock::ads::AdsMode mode) {
-    if (!WritePrivateProfileStringA("Camera", m_adsModeKey.c_str(), cameraunlock::ads::AdsModeValue(mode), m_iniPath.c_str())) {
-        throw std::runtime_error("Could not persist AdsMode to " + m_iniPath + ": Win32 " + std::to_string(GetLastError()));
-    }
-    m_adsMode = mode;
-}
-}

@@ -14,11 +14,9 @@ static bool Near(float a, float b) { return std::fabs(a - b) < 0.0001f; }
 
 int main() {
     const float clean[9]{-0.6f, 0, 0.8f, 0.8f, 0, 0.6f, 0, 1, 0};
-    const float offset[3]{4, -2, 3};
-    const float noOffset[3]{};
     const float baseline[12]{0, 0, 1, 1, 0, 0, 0, 1, 0, 10, 20, 30};
     HeadTracking::WeaponView view;
-    view.Capture(clean, clean, noOffset, 1.0f, 0.5625f);
+    view.Capture(clean, clean, 1.0f, 0.5625f);
     float result[12];
     for (int i = 0; i < 12; ++i) result[i] = baseline[i];
     view.Apply(result, 0.7f, 0.39375f);
@@ -39,7 +37,7 @@ int main() {
                     for (int c = 0; c < 3; ++c)
                         for (int k = 0; k < 3; ++k)
                             tracked[r*3+c] += clean[r*3+k]*head[k*3+c];
-                view.Capture(clean, tracked, offset, 1.0f, 0.5625f);
+                view.Capture(clean, tracked, 1.0f, 0.5625f);
                 for (float lens : {0.4f, 0.6784f, 1.0f, 1.3f}) {
                     for (int i = 0; i < 12; ++i) result[i] = baseline[i];
                     view.Apply(result, lens, lens*0.5625f);
@@ -54,8 +52,8 @@ int main() {
                             Check(Near(dot, a == b ? 1.0f : 0.0f), "weapon camera must remain orthonormal");
                         }
                     }
-                    Check(Near(result[9], 12) && Near(result[10], 16) && Near(result[11], 33),
-                          "collision-clamped lean must be transferred between camera bases");
+                    Check(Near(result[9], 10) && Near(result[10], 20) && Near(result[11], 30),
+                          "the weapon camera must stay at the clean eye under a lean");
                 }
             }
         }

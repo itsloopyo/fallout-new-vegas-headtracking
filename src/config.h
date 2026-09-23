@@ -47,8 +47,6 @@ public:
     bool ApplyToComponents(CameraController* camera, HotkeyHandler* hotkey,
                            GameState* gameState, UdpReceiver* udpReceiver);
 
-    void SetAdsMode(cameraunlock::ads::AdsMode mode);
-
     // Network settings
     uint16_t GetUdpPort() const { return m_udpPort; }
 
@@ -99,8 +97,6 @@ private:
 
     // Yaw mode: true = world-space (horizon-locked, default), false = camera-local
     bool m_worldSpaceYaw;
-    std::string m_adsModeKey = "ads_mode";
-    cameraunlock::ads::AdsMode m_adsMode = cameraunlock::ads::kDefaultAdsMode;
 };
 
 }  // namespace HeadTracking

@@ -128,33 +128,21 @@ view sits off to one side, centre it in the tracker.
 | Toggle tracking | `End` | `Ctrl+Shift+Y` |
 | Cycle rotation and position | `Page Up` | `Ctrl+Shift+G` |
 | Toggle hip-fire reticle | `Page Down` | `Ctrl+Shift+H` |
-| Cycle ADS mode | `Insert` | `Ctrl+Shift+U` |
 | Toggle yaw mode | `Delete` | `Ctrl+Shift+J` |
 
 Page Up cycles full tracking, rotation only, then position only. Delete switches
-between horizon-locked yaw and camera-local yaw. Existing `YawModeKey=0x2D`
-settings move to Delete because Insert now owns ADS.
+between horizon-locked yaw and camera-local yaw.
 
 The gold hip-fire reticle marks your mouse/controller aim as you move your head.
 Page Down turns it off and restores the game's centred hip-fire crosshair.
-The optional white ADS marker replaces the gold reticle while aiming.
+The game's own sights take over while you aim, so the reticle is hidden then.
 
-`Insert` / `Ctrl+Shift+U` cycles what happens when you aim down sights. All
-three ease the view onto the sight line when you raise the weapon:
+### Aiming down sights
 
-1. **Tracking paused** (default): yaw, pitch and leaning fade out while aiming.
-2. **Tracking on, with an aim marker**: tracking continues relative to your
-   head pose at ADS entry. A small white crosshair marks the projected clean
-   aim point. Use this marker when head movement separates it from an optic's
-   built-in reticle.
-3. **Tracking on, no aim marker**: the same relative tracking without the marker.
-
-The first-person weapon moves with the view so it stays pointed along your
-mouse/controller aim. Leaning moves your eye away from the iron sights.
-
-Roll remains absolute in all three modes. Entry takes 150 ms; lowering the
-weapon blends back to normal tracking over 250 ms. The choice is saved in
-`[Camera] ads_mode`. The selected mode is named in `HeadTracking.log`.
+Head tracking stays on while you aim. The weapon stays where your mouse or
+controller points it, so with your head turned it sits off to one side with its
+sights still lined up, and your rounds land where those sights point. Head
+movement is scaled to the zoom, so a scope does not magnify it.
 
 ## Configuration
 
@@ -182,6 +170,10 @@ tracking. For an unsupported build, include the fingerprint line in a bug report
 
 If the view needs centring, use the centre control in your tracker. If yaw feels
 awkward at steep viewing angles, try Delete to switch yaw mode.
+
+**The weapon is off to one side when I aim down sights.** Your head is turned:
+the weapon stays on your aim and you are looking past it. Turn back to it, or
+move your aim to where you are looking.
 
 ### Known limitation
 

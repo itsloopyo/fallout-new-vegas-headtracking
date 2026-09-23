@@ -293,34 +293,30 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
     float* camMatrix = reinterpret_cast<float*>(worldTransform);
     float* f = reinterpret_cast<float*>(frustum);
 
+    const float baseFov = *reinterpret_cast<const float*>(ActiveProfile().defaultWorldFov);
+    const bool fovReadable = f && std::isfinite(f[2]) && f[2] > 0.0f &&
+                             std::isfinite(baseFov) && baseFov > 0.0f && baseFov < 180.0f;
+    // The game's FOV setting is horizontal at 4:3; the frustum is vertical.
+    const float baseTanY = fovReadable ? std::tan(baseFov * kDegToRadF * 0.5f) * 0.75f : 0.0f;
+    const float zoom = fovReadable ? cameraunlock::camera::FovZoomFactor(f[2], baseTanY) : 1.0f;
+    static bool s_zoomLogged = false;
+    if (isMainCamera && !s_zoomLogged && !IsGamePaused()) {
+        s_zoomLogged = true;
+        cameraunlock::logging::Line(
+            "Zoom: live tanY=%.4f (frustum, vertical) base=%.2f deg (horizontal at 4:3) aspect=0.75 baseTanY=%.4f factor=%.4f%s",
+            f ? f[2] : 0.0f, baseFov, baseTanY, zoom, fovReadable ? "" : " FOV unreadable, no compensation");
+    }
+
     // IsGamePaused() sets up an SEH frame and dereferences the InterfaceManager
     // singleton; it is only needed for the main-camera rotation branch. Kept as
     // the last short-circuit term so it runs ~once per frame, not once per
     // frustum (shadow/reflection/refraction passes skip it).
     if (D3D9Hook::Instance().IsEnabled() && controller && shouldExpand && worldTransform && isMainCamera && !IsGamePaused()) {
-        const AdsState::Pose absolute{
-            static_cast<float>(controller->GetCurrentPitchOffset()),
-            static_cast<float>(controller->GetCurrentYawOffset()),
-            static_cast<float>(controller->GetCurrentRollOffset()),
-            controller->GetPositionX(), controller->GetPositionY(), controller->GetPositionZ()
-        };
-        auto pose = controller->Ads().Update(false, IsPlayerAiming(), true, absolute, GetTickCount64());
-        const float baseFov = *reinterpret_cast<const float*>(ActiveProfile().defaultWorldFov);
-        float zoom = 1.0f;
-        if (f && std::isfinite(f[2]) && f[2] > 0.0f &&
-            std::isfinite(baseFov) && baseFov > 0.0f && baseFov < 180.0f) {
-            // The game's FOV setting is horizontal at 4:3; the frustum is vertical.
-            const float baseTanY = std::tan(baseFov * kDegToRadF * 0.5f) * 0.75f;
-            zoom = cameraunlock::camera::FovZoomFactor(f[2], baseTanY);
-            pose.yaw = cameraunlock::camera::ScaleAngleForZoom(pose.yaw, zoom);
-            pose.pitch = cameraunlock::camera::ScaleAngleForZoom(pose.pitch, zoom);
-            pose.x *= zoom;
-            pose.y *= zoom;
-            pose.z *= zoom;
-        }
-        const double yawDeg = pose.yaw;
-        const double pitchDeg = pose.pitch;
-        const double rollDeg = pose.roll;
+        const double headYaw = controller->GetCurrentYawOffset();
+        const double headPitch = controller->GetCurrentPitchOffset();
+        const double yawDeg = cameraunlock::camera::ScaleAngleForZoom(static_cast<float>(headYaw), zoom);
+        const double pitchDeg = cameraunlock::camera::ScaleAngleForZoom(static_cast<float>(headPitch), zoom);
+        const double rollDeg = controller->GetCurrentRollOffset();
 
         static ULONGLONG lastProbe = 0;
         const ULONGLONG now = GetTickCount64();
@@ -328,9 +324,8 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
             lastProbe = now;
             auto* player = *reinterpret_cast<uint8_t**>(ActiveProfile().playerBase);
             cameraunlock::logging::Line(
-                "Camera: ADS=%d mode=%s head=(%.2f,%.2f,%.2f) render=(%.2f,%.2f,%.2f) zoom=%.4f aim=(%.6f,%.6f)",
-                controller->Ads().IsAiming(), cameraunlock::ads::AdsModeValue(controller->Ads().GetMode()),
-                absolute.yaw, absolute.pitch, absolute.roll, yawDeg, pitchDeg, rollDeg, zoom,
+                "Camera: aiming=%d head=(%.2f,%.2f,%.2f) render=(%.2f,%.2f,%.2f) zoom=%.4f aim=(%.6f,%.6f)",
+                IsPlayerAiming(), headYaw, headPitch, rollDeg, yawDeg, pitchDeg, rollDeg, zoom,
                 *reinterpret_cast<float*>(player + 0x2C), *reinterpret_cast<float*>(player + 0x24));
         }
 
@@ -344,9 +339,9 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
         }
 
         // Apply position before the game builds the view matrix.
-        float posX = pose.x;   // meters, right
-        float posY = pose.y;   // meters, up
-        float posZ = pose.z;   // meters, forward
+        float posX = controller->GetPositionX() * zoom;   // meters, right
+        float posY = controller->GetPositionY() * zoom;   // meters, up
+        float posZ = controller->GetPositionZ() * zoom;   // meters, forward
 
         if (posX != 0.0f || posY != 0.0f || posZ != 0.0f || s_hasPositionState) {
             float* camPos = reinterpret_cast<float*>(
@@ -358,7 +353,7 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
         }
     }
     if (isMainCamera && controller && controller->IsActive() && !IsGamePaused() &&
-        (controller->Ads().ShowMarker() || (!IsPlayerAiming() && g_reticleEnabled))) {
+        !IsPlayerAiming() && g_reticleEnabled) {
         SetCrosshairTileVisible(false);
         g_crosshairDisabled = true;
     }
@@ -385,11 +380,7 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
         if (g_aimProjectionValid) {
             g_mainCameraTanFovX = f[1];
             g_mainCameraTanFovY = f[2];
-            float offset[3]{};
-            if (s_hasPositionState) {
-                for (int i = 0; i < 3; ++i) offset[i] = s_positionAfter[i] - s_positionBefore[i];
-            }
-            g_weaponView.Capture(s_matrixBeforeRotation, camMatrix, offset, f[1], f[2]);
+            g_weaponView.Capture(s_matrixBeforeRotation, camMatrix, f[1], f[2]);
         } else {
             g_weaponView.valid = false;
         }

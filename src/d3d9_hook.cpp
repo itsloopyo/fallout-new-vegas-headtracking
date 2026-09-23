@@ -377,20 +377,19 @@ HRESULT STDMETHODCALLTYPE D3D9Hook::HookedPresent(IDirect3DDevice9* device, cons
     const bool isPaused = D3D9Internal::IsGamePaused();
     const bool isAiming = D3D9Internal::IsPlayerAiming();
     const bool controllerActive = s_cameraController && s_cameraController->IsActive();
-    const bool adsMarker = controllerActive && s_cameraController->Ads().ShowMarker();
     D3D9Hook& hook = Instance();
 
     if (hook.m_enabled && s_cameraController) {
         DetectTeleport();
 
         if (controllerActive) {
-            if (isPaused || (isAiming && !adsMarker)) {
+            if (isPaused || isAiming) {
                 if (D3D9Internal::g_crosshairDisabled) {
                     D3D9Internal::SetCrosshairTileVisible(!isAiming && !isPaused);
                     D3D9Internal::g_crosshairDisabled = false;
                     HT_LOG_D3D("Crosshair: showing stock (paused=%d, ADS=%d)", isPaused, isAiming);
                 }
-            } else if (adsMarker || D3D9Internal::g_reticleEnabled) {
+            } else if (D3D9Internal::g_reticleEnabled) {
                 if (!D3D9Internal::g_crosshairDisabled) {
                     D3D9Internal::SetCrosshairTileVisible(false);
                     D3D9Internal::g_crosshairDisabled = true;

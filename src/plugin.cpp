@@ -294,12 +294,6 @@ void HeadTrackingPlugin::ApplyHotkeyAction(HotkeyAction action) {
         if (g_ConsolePrint) {
             g_ConsolePrint("HeadTracking: Reticle %s", D3D9Internal::g_reticleEnabled ? "enabled" : "disabled");
         }
-    } else if (action == HotkeyAction::CycleAdsMode) {
-        const auto mode = cameraunlock::ads::NextAdsMode(m_cameraController->Ads().GetMode());
-        m_config->SetAdsMode(mode);
-        m_cameraController->Ads().SetMode(mode);
-        ResetTracking();
-        culog::Line("%s", cameraunlock::ads::AdsModeToast(mode));
     } else if (action == HotkeyAction::ToggleYawMode) {
         if (m_cameraController) {
             m_cameraController->ToggleYawMode();

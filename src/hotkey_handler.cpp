@@ -89,7 +89,6 @@ HotkeyAction HotkeyHandler::Update() {
     m_cycleTrackingModeKeyState.Update(cycleDown);
     m_reticleToggleKeyState.Update(reticleDown);
     m_yawModeKeyState.Update(yawModeDown);
-    m_adsKeyState.Update(IsActionDown(VK_INSERT, 'U', ctrlShiftHeld));
 
     uint64_t currentTime = GetTickCount64();
 
@@ -117,7 +116,6 @@ HotkeyAction HotkeyHandler::Update() {
     if (tryFire(m_reticleToggleKeyState, "ReticleToggle")) {
         return HotkeyAction::ReticleToggle;
     }
-    if (tryFire(m_adsKeyState, "CycleAdsMode")) return HotkeyAction::CycleAdsMode;
     if (tryFire(m_yawModeKeyState, "ToggleYawMode")) {
         return HotkeyAction::ToggleYawMode;
     }
