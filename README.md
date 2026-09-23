@@ -13,7 +13,7 @@ An unofficial head tracking mod for Fallout: New Vegas that moves the view with 
 ## Requirements
 
 - Fallout: New Vegas for Windows. Supported executable profiles: Steam
-  (2011-07-01) and Game Pass English (2016-01-21).
+  (2011-07-01) and Xbox Game Pass English (2016-01-21).
 - A tracker sending OpenTrack UDP pose data.
 
 Other executable fingerprints are left untouched and identified in the log.
