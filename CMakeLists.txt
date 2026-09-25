@@ -45,12 +45,24 @@ add_executable(fnv_config_oracle
 target_include_directories(fnv_config_oracle PRIVATE tests/config_differential/oracle/core-c480d8a/include)
 add_executable(fnv_config_differential
     tests/config_differential/differential_tests.cpp
+    src/config.cpp
     src/legacy_config/legacy_config.cpp
 )
 target_include_directories(fnv_config_differential PRIVATE tests/config_differential)
 target_compile_definitions(fnv_config_differential PRIVATE FNV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 target_link_libraries(fnv_config_differential cameraunlock)
 add_test(NAME fnv_config_differential COMMAND fnv_config_differential $<TARGET_FILE:fnv_config_oracle>)
+
+# The committed config against the table, and the saves. `fnv_config_tests
+# --render-config <path>` is what pixi run render-config writes the file with.
+add_executable(fnv_config_tests
+    tests/config_tests.cpp
+    src/config.cpp
+    src/legacy_config/legacy_config.cpp
+)
+target_compile_definitions(fnv_config_tests PRIVATE FNV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+target_link_libraries(fnv_config_tests cameraunlock)
+add_test(NAME fnv_config COMMAND fnv_config_tests)
 
 # Source files
 set(SOURCES

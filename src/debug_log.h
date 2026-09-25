@@ -146,7 +146,6 @@ private:
 #define HT_LOG_UDP(fmt, ...)    HT_DEBUG_LOG(Udp, "HeadTracking_udp.log", fmt, ##__VA_ARGS__)
 #define HT_LOG_D3D(fmt, ...)    HT_DEBUG_LOG(D3D, "HeadTracking_d3d.log", fmt, ##__VA_ARGS__)
 #define HT_LOG_PLUGIN(fmt, ...) HT_DEBUG_LOG(Plugin, "HeadTracking_debug.log", fmt, ##__VA_ARGS__)
-#define HT_LOG_HOTKEY(fmt, ...) HT_DEBUG_LOG(Hotkey, "HeadTracking_hotkey.log", fmt, ##__VA_ARGS__)
 
 // Conditional logging based on frame count
 #define HT_LOG_PERIODIC(category, filename, interval, counter, fmt, ...) \
@@ -161,7 +160,6 @@ private:
 #define HT_LOG_UDP(fmt, ...)    ((void)0)
 #define HT_LOG_D3D(fmt, ...)    ((void)0)
 #define HT_LOG_PLUGIN(fmt, ...) ((void)0)
-#define HT_LOG_HOTKEY(fmt, ...) ((void)0)
 #define HT_LOG_PERIODIC(category, filename, interval, counter, fmt, ...) ((void)0)
 
 namespace HeadTracking {

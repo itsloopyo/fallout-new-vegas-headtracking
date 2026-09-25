@@ -2,9 +2,17 @@
 
 #include <Windows.h>
 
+#include "config.h"
+
+#include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
+
+#include <cameraunlock/config/config_owner.h>
+#include <cameraunlock/input/deferred_actions.h>
+#include <cameraunlock/tracking/tracking_mode.h>
 
 #include <cameraunlock/processing/pose_interpolator.h>
 #include <cameraunlock/processing/position_processor.h>
@@ -18,12 +26,10 @@ struct NVSEMessagingInterface;
 namespace HeadTracking {
 
 // Forward declarations for plugin components
-class Config;
 class UdpReceiver;
 class CameraController;
 class GameState;
 class HotkeyHandler;
-enum class HotkeyAction;
 struct TrackingData;
 
 class HeadTrackingPlugin {
@@ -50,8 +56,26 @@ private:
     HeadTrackingPlugin(HeadTrackingPlugin&&) = delete;
     HeadTrackingPlugin& operator=(HeadTrackingPlugin&&) = delete;
 
-    // Check for config file changes and reload if needed
+    // Reload HeadTracking.ini when it changed on disk, and apply what it holds.
     void CheckConfigReload();
+
+    // Hand the settings to the components: smoothing, yaw mode, game state
+    // gating, hotkeys and the tracking mode. Render thread, or init before it
+    // runs.
+    void ApplyConfig(const Config& config);
+
+    void ApplyTrackingMode(cameraunlock::TrackingMode mode);
+
+    // Hotkey actions, on the poller thread. The toggle changes this session
+    // only; the mode and yaw toggles store the state they want, ask the render
+    // thread to apply it, and save it.
+    void OnToggleKey();
+    void OnCycleTrackingModeKey();
+    void OnToggleYawModeKey();
+    void Save(const std::function<void(Config&)>& change);
+
+    // Carries out what the hotkeys asked for since the last frame.
+    void ApplyRequestedActions();
     void ResetTracking();
     bool m_waitingForPose = true;
 
@@ -60,14 +84,13 @@ private:
     // an edited smoothing value reaches position tracking as well as rotation.
     void ApplyPositionSettings();
 
-    // Carry out the effect of a hotkey press (toggle, mode cycle, ...).
-    void ApplyHotkeyAction(HotkeyAction action);
-
     // Run the 6DOF position pipeline for this frame's tracking sample and push
     // the resulting offset to the camera controller.
     void ProcessPositionTracking(const TrackingData& data, bool hasNewData, float deltaTime);
 
-    std::unique_ptr<Config> m_config;
+    std::unique_ptr<cameraunlock::config::ConfigOwner<Config>> m_configOwner;
+    // The settings the session runs on. Render thread (and init) only.
+    Config m_config;
     std::unique_ptr<UdpReceiver> m_udpReceiver;
     std::unique_ptr<CameraController> m_cameraController;
     std::unique_ptr<GameState> m_gameState;
@@ -82,9 +105,16 @@ private:
     int64_t m_lastPositionTimestampUs = 0;
     bool m_positionEnabled = true;
 
-    // Tracking-mode cycle state advanced by Page Up / Ctrl+Shift+G:
-    // 0 = normal (rotation + position), 1 = rotation only, 2 = position only.
-    int m_trackingModeCycle = 0;
+    // The mode and yaw toggles use the desired-state pattern: the poller thread
+    // computes the next state from the one the render thread last applied, so
+    // two presses before one frame take one step.
+    cameraunlock::input::DeferredAction m_toggleRequest;
+    cameraunlock::input::DeferredAction m_modeRequest;
+    cameraunlock::input::DeferredAction m_yawRequest;
+    std::atomic<cameraunlock::TrackingMode> m_appliedMode{cameraunlock::TrackingMode::RotationAndPosition};
+    std::atomic<cameraunlock::TrackingMode> m_desiredMode{cameraunlock::TrackingMode::RotationAndPosition};
+    std::atomic<bool> m_appliedWorldYaw{true};
+    std::atomic<bool> m_desiredWorldYaw{true};
 
     bool m_initialized;
     bool m_gameLoaded;
@@ -102,7 +132,7 @@ extern HMODULE g_hModule;
 // All if(g_ConsolePrint) checks will fail, effectively disabling console output
 inline void (*g_ConsolePrint)(const char* fmt, ...) = nullptr;
 
-// Get INI file path (next to DLL)
-std::string GetINIPath();
+// HeadTracking.ini beside this DLL.
+std::wstring ConfigPath();
 
 }  // namespace HeadTracking

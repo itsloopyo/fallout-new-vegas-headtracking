@@ -20,7 +20,6 @@ float g_mainCameraTanFovY = 0.0f;
 IDirect3DStateBlock9* g_cachedStateBlock = nullptr;
 IDirect3DDevice9* g_stateBlockDevice = nullptr;
 bool g_crosshairDisabled = false;
-bool g_reticleEnabled = true;
 
 // Tile value IDs (from xNVSE GameTiles.h)
 constexpr uint32_t kTileValue_visible = 0x0FA3;

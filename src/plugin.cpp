@@ -3,7 +3,6 @@
 #include "plugin.h"
 #include "nvse_abi/PluginAPI.h"
 #include "version.h"
-#include "config.h"
 #include "udp_receiver.h"
 #include "camera_controller.h"
 #include "game_state.h"
@@ -18,7 +17,9 @@
 #include <cameraunlock/math/quat4.h>
 #include <cameraunlock/time/qpc_clock.h>
 
+#include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace HeadTracking {
 
@@ -39,8 +40,7 @@ HeadTrackingPlugin& HeadTrackingPlugin::Instance() {
 }
 
 HeadTrackingPlugin::HeadTrackingPlugin()
-    : m_config(nullptr)
-    , m_udpReceiver(nullptr)
+    : m_udpReceiver(nullptr)
     , m_cameraController(nullptr)
     , m_gameState(nullptr)
     , m_hotkeyHandler(nullptr)
@@ -50,11 +50,14 @@ HeadTrackingPlugin::HeadTrackingPlugin()
     , m_configCheckInterval(5000)
     , m_lastConfigCheckTime(0) {
     // Create component instances (not initialized yet)
-    m_config = std::make_unique<Config>();
     m_udpReceiver = std::make_unique<UdpReceiver>();
     m_cameraController = std::make_unique<CameraController>();
     m_gameState = std::make_unique<GameState>();
-    m_hotkeyHandler = std::make_unique<HotkeyHandler>();
+    m_hotkeyHandler = std::make_unique<HotkeyHandler>(HotkeyHandler::Actions{
+        [this] { OnToggleKey(); },
+        [this] { OnCycleTrackingModeKey(); },
+        [this] { OnToggleYawModeKey(); },
+    });
 }
 
 HeadTrackingPlugin::~HeadTrackingPlugin() {
@@ -88,41 +91,32 @@ bool HeadTrackingPlugin::Initialize() {
         return true;
     }
 
-    // Load configuration from INI file first - other components depend on it.
-    std::string iniPath = GetINIPath();
-    if (!m_config->Load(iniPath)) {
-        if (g_ConsolePrint) {
-            g_ConsolePrint("HeadTracking: ERROR - Failed to load config from %s", iniPath.c_str());
-        }
-        culog::Line("ERROR: failed to load config from %s - head tracking is inactive",
-                    iniPath.c_str());
+    // The config first - other components depend on it. Load converts an
+    // older file, so it runs here on the init thread and never in DllMain.
+    const std::wstring configPath = ConfigPath();
+    m_configOwner = std::make_unique<cameraunlock::config::ConfigOwner<Config>>(ConfigOwnerOptions(configPath));
+    const cameraunlock::config::ConfigLoadResult<Config> loaded = m_configOwner->Load();
+    for (const std::string& line : loaded.log) culog::Line("%s", line.c_str());
+    if (!loaded.reason.empty()) culog::Line("%s", loaded.reason.c_str());
+    if (loaded.status == cameraunlock::config::ConfigLoadStatus::LegacyRefused) {
+        // What the published build did with a file it refused.
+        culog::Line("ERROR: failed to load config from %ls - head tracking is inactive", configPath.c_str());
         return false;
     }
-    culog::Line("Config loaded from %s", iniPath.c_str());
+    culog::Line("Config %s: %ls", cameraunlock::config::ConfigLoadStatusName(loaded.status), configPath.c_str());
+    m_config = loaded.config;
 
     // Non-fatal: if the port is held by another head-tracker the receiver keeps
     // a background thread retrying the bind every 5s and recovers on its own.
-    uint16_t udpPort = m_config->GetUdpPort();
-    m_udpReceiver->Initialize(udpPort);
+    m_udpReceiver->Initialize(m_config.udp_port);
 
     m_cameraController->Initialize();
     m_gameState->Initialize();
-    m_hotkeyHandler->Initialize(m_cameraController.get(), m_gameState.get());
-
-    // Apply loaded configuration to all components
-    if (!m_config->ApplyToComponents(m_cameraController.get(), m_hotkeyHandler.get(),
-                                      m_gameState.get(), m_udpReceiver.get())) {
-        if (g_ConsolePrint) {
-            g_ConsolePrint("HeadTracking: ERROR - Failed to apply configuration");
-        }
-        culog::Line("ERROR: failed to apply the loaded configuration - head tracking is inactive");
-        return false;
-    }
+    ApplyConfig(m_config);
+    m_cameraController->SetEnabled(m_config.enable_on_startup);
+    m_hotkeyHandler->Start();
 
     m_poseInterpolator.Reset();
-
-    // Initialize position processor (6DOF)
-    ApplyPositionSettings();
     m_positionInterpolator.Reset();
 
     m_initialized = true;
@@ -138,6 +132,8 @@ void HeadTrackingPlugin::Shutdown() {
     if (!m_initialized) {
         return;
     }
+
+    m_hotkeyHandler->Stop();
 
     // Shutdown D3D hook
     D3D9Hook::Instance().Shutdown();
@@ -177,7 +173,7 @@ void HeadTrackingPlugin::Update() {
     }
 
     // Check for config file changes periodically (not every frame to reduce I/O)
-    if (m_config && (currentTime - m_lastConfigCheckTime >= m_configCheckInterval * 1000)) {
+    if (currentTime - m_lastConfigCheckTime >= m_configCheckInterval * 1000) {
         m_lastConfigCheckTime = currentTime;
         CheckConfigReload();
     }
@@ -187,10 +183,10 @@ void HeadTrackingPlugin::Update() {
         m_gameState->Update();
     }
 
-    // Process hotkeys
-    if (m_hotkeyHandler && m_gameState->CanProcessInput()) {
-        ApplyHotkeyAction(m_hotkeyHandler->Update());
-    }
+    // Hotkeys fire on the poller thread and act only while the game state
+    // allows input; what they asked for is applied here, on the render thread.
+    m_hotkeyHandler->SetInputAllowed(m_gameState->CanProcessInput());
+    ApplyRequestedActions();
 
     // Poll UDP receiver for tracking data
     bool hasNewData = false;
@@ -259,48 +255,88 @@ void HeadTrackingPlugin::Update() {
     }
 }
 
-void HeadTrackingPlugin::ApplyHotkeyAction(HotkeyAction action) {
-    if (action == HotkeyAction::Toggle) {
+void HeadTrackingPlugin::OnToggleKey() {
+    m_toggleRequest.Request();
+}
+
+void HeadTrackingPlugin::OnCycleTrackingModeKey() {
+    // Rotation and position -> rotation only -> position only -> rotation and position.
+    const auto next = static_cast<cameraunlock::TrackingMode>((static_cast<int>(m_appliedMode.load()) + 1) % 3);
+    m_desiredMode.store(next);
+    m_modeRequest.Request();
+    const cameraunlock::TrackingModeChannels channels = cameraunlock::EncodeTrackingMode(next);
+    Save([channels](Config& config) {
+        config.rotation_enabled = channels.rotation_enabled;
+        config.position_enabled = channels.position_enabled;
+    });
+}
+
+void HeadTrackingPlugin::OnToggleYawModeKey() {
+    const bool next = !m_appliedWorldYaw.load();
+    m_desiredWorldYaw.store(next);
+    m_yawRequest.Request();
+    Save([next](Config& config) { config.world_space_yaw = next; });
+}
+
+void HeadTrackingPlugin::Save(const std::function<void(Config&)>& change) {
+    const cameraunlock::config::ConfigSaveResult saved = m_configOwner->Save(change);
+    if (saved.status == cameraunlock::config::ConfigSaveStatus::Saved) return;
+    for (const std::string& line : saved.log) culog::Line("%s", line.c_str());
+    culog::Line("%s", saved.reason.c_str());
+}
+
+void HeadTrackingPlugin::ApplyRequestedActions() {
+    if (m_toggleRequest.Consume()) {
+        const bool enable = !m_cameraController->IsEnabled();
+        m_cameraController->SetEnabled(enable);
         ResetTracking();
-    } else if (action == HotkeyAction::CycleTrackingMode) {
-        // Three-state cycle:
-        //   0 = normal (rotation + position)
-        //   1 = rotation only (position disabled)
-        //   2 = position only (rotation disabled)
-        m_trackingModeCycle = (m_trackingModeCycle + 1) % 3;
-        bool rotEnabled = (m_trackingModeCycle != 2);
-        bool posEnabled = (m_trackingModeCycle != 1);
-
-        if (m_cameraController) {
-            m_cameraController->SetRotationEnabled(rotEnabled);
-            if (!posEnabled) {
-                m_cameraController->SetPositionOffset(0.0f, 0.0f, 0.0f);
-            }
-        }
-        m_positionEnabled = posEnabled;
-        m_positionInterpolator.Reset();
-
-        const char* modeName =
-            (m_trackingModeCycle == 0) ? "normal (rotation + position)" :
-            (m_trackingModeCycle == 1) ? "rotation only" :
-                                         "position only";
-        HT_LOG_PLUGIN("Tracking mode: %s", modeName);
-        if (g_ConsolePrint) {
-            g_ConsolePrint("HeadTracking: Tracking mode: %s", modeName);
-        }
-    } else if (action == HotkeyAction::ReticleToggle) {
-        D3D9Internal::g_reticleEnabled = !D3D9Internal::g_reticleEnabled;
-        HT_LOG_PLUGIN("Reticle %s", D3D9Internal::g_reticleEnabled ? "enabled" : "disabled");
-        if (g_ConsolePrint) {
-            g_ConsolePrint("HeadTracking: Reticle %s", D3D9Internal::g_reticleEnabled ? "enabled" : "disabled");
-        }
-    } else if (action == HotkeyAction::ToggleYawMode) {
-        if (m_cameraController) {
-            m_cameraController->ToggleYawMode();
-            HT_LOG_PLUGIN("Yaw mode: %s",
-                          m_cameraController->IsWorldSpaceYaw() ? "world-space" : "camera-local");
-        }
+        culog::Line("Head tracking %s", enable ? "enabled" : "disabled");
     }
+    if (m_modeRequest.Consume()) {
+        ApplyTrackingMode(m_desiredMode.load());
+    }
+    if (m_yawRequest.Consume()) {
+        const bool worldSpace = m_desiredWorldYaw.load();
+        m_cameraController->SetWorldSpaceYaw(worldSpace);
+        m_appliedWorldYaw.store(worldSpace);
+        culog::Line("Yaw mode: %s", worldSpace ? "world-space (horizon-locked)" : "camera-local");
+    }
+}
+
+void HeadTrackingPlugin::ApplyTrackingMode(cameraunlock::TrackingMode mode) {
+    const cameraunlock::TrackingModeChannels channels = cameraunlock::EncodeTrackingMode(mode);
+    m_cameraController->SetRotationEnabled(channels.rotation_enabled);
+    if (!channels.position_enabled) {
+        m_cameraController->SetPositionOffset(0.0f, 0.0f, 0.0f);
+    }
+    m_positionEnabled = channels.position_enabled;
+    m_positionInterpolator.Reset();
+    m_appliedMode.store(mode);
+    const char* name = mode == cameraunlock::TrackingMode::RotationAndPosition ? "rotation and position"
+                       : mode == cameraunlock::TrackingMode::RotationOnly      ? "rotation only"
+                                                                               : "position only";
+    culog::Line("Tracking mode: %s", name);
+}
+
+void HeadTrackingPlugin::ApplyConfig(const Config& config) {
+    m_cameraController->SetLocalSmoothing(config.local_smoothing);
+    m_cameraController->SetRemoteSmoothing(config.remote_smoothing);
+    m_cameraController->SetWorldSpaceYaw(config.world_space_yaw);
+    m_appliedWorldYaw.store(config.world_space_yaw);
+    m_desiredWorldYaw.store(config.world_space_yaw);
+
+    m_gameState->SetInputBlockMode(config.input_block_mode);
+    m_gameState->SetTrackInThirdPerson(config.track_in_third_person);
+    m_gameState->SetTrackInVATS(config.track_in_vats);
+    m_gameState->SetPauseDuringCombat(config.pause_during_combat);
+
+    m_hotkeyHandler->Bind(config);
+
+    const cameraunlock::TrackingMode mode = StartupTrackingMode(config);
+    m_desiredMode.store(mode);
+    ApplyTrackingMode(mode);
+
+    ApplyPositionSettings();
 }
 
 void HeadTrackingPlugin::ProcessPositionTracking(const TrackingData& data, bool hasNewData, float deltaTime) {
@@ -325,8 +361,8 @@ void HeadTrackingPlugin::ProcessPositionTracking(const TrackingData& data, bool 
         static_cast<float>(pitchDeg * cameraunlock::math::kDegToRad),
         static_cast<float>(rollDeg * cameraunlock::math::kDegToRad));
 
-    if (cameraunlock::math::GetEffectiveSmoothing(m_config->GetLocalSmoothing(),
-            m_config->GetRemoteSmoothing(), m_udpReceiver->IsRemoteConnection()) == 0.0) {
+    if (cameraunlock::math::GetEffectiveSmoothing(m_config.local_smoothing,
+            m_config.remote_smoothing, m_udpReceiver->IsRemoteConnection()) == 0.0) {
         m_positionProcessor.ResetSmoothing();
     }
     m_lastPositionOffset = m_positionProcessor.Process(interpPos, headRotQ, deltaTime);
@@ -364,43 +400,25 @@ void HeadTrackingPlugin::ApplyPositionSettings() {
     posSettings.invert_z = true;
     // Position uses the same two smoothing values as rotation; the connection
     // flag that picks between them is pushed from the receiver each frame.
-    posSettings.local_smoothing = static_cast<float>(m_config->GetLocalSmoothing());
-    posSettings.remote_smoothing = static_cast<float>(m_config->GetRemoteSmoothing());
+    posSettings.local_smoothing = static_cast<float>(m_config.local_smoothing);
+    posSettings.remote_smoothing = static_cast<float>(m_config.remote_smoothing);
     m_positionProcessor.SetSettings(posSettings);
 }
 
 void HeadTrackingPlugin::CheckConfigReload() {
-    if (!m_config || !m_config->IsLoaded()) {
+    if (!m_configOwner->FileChanged()) {
         return;
     }
-
-    // Check if file has been modified
-    if (m_config->HasFileChanged()) {
-        if (!m_config->Reload()) {
-            if (g_ConsolePrint) {
-                g_ConsolePrint("HeadTracking: ERROR - Config reload failed, keeping previous settings");
-            }
-            return;
-        }
-        // Apply new settings to all components
-        if (!m_config->ApplyToComponents(m_cameraController.get(), m_hotkeyHandler.get(),
-                                          m_gameState.get(), m_udpReceiver.get())) {
-            if (g_ConsolePrint) {
-                g_ConsolePrint("HeadTracking: ERROR - Failed to apply reloaded config");
-            }
-        }
-
-        // ApplyToComponents has no PositionProcessor parameter, so the reloaded
-        // smoothing values would otherwise reach rotation only and leave
-        // position on whatever was read at startup. Push them here as well or
-        // the two halves of the pipeline drift apart for the rest of the
-        // session and the camera swims.
-        //
-        // Unconditional on purpose: ApplyToComponents pushes the camera
-        // smoothing before its hotkey validation can fail, so on a partial
-        // failure rotation has already moved and position must follow it.
-        ApplyPositionSettings();
+    const cameraunlock::config::ConfigReloadResult<Config> reloaded = m_configOwner->Reload();
+    for (const std::string& line : reloaded.log) culog::Line("%s", line.c_str());
+    if (!reloaded.reason.empty()) culog::Line("%s", reloaded.reason.c_str());
+    if (!reloaded.config) {
+        return;
     }
+    // The UDP port is bound once at startup; a changed port applies at the
+    // next launch.
+    m_config = *reloaded.config;
+    ApplyConfig(m_config);
 }
 
 void HeadTrackingPlugin::OnGameLoaded() {
@@ -422,15 +440,21 @@ void HeadTrackingPlugin::OnGameExit() {
     m_gameLoaded = false;
 }
 
-std::string GetINIPath() {
+std::wstring ConfigPath() {
     if (!g_hModule) {
-        return "";
+        throw std::logic_error("ConfigPath needs the module handle DllMain records");
     }
-
-    char dllPath[MAX_PATH];
-    DWORD result = GetModuleFileNameA(g_hModule, dllPath, MAX_PATH);
-    if (result == 0 || result >= MAX_PATH) {
-        return "";
+    std::vector<wchar_t> buffer(MAX_PATH);
+    for (;;) {
+        const DWORD written = GetModuleFileNameW(g_hModule, buffer.data(), static_cast<DWORD>(buffer.size()));
+        if (written == 0) {
+            throw std::runtime_error("GetModuleFileNameW failed: Windows error " + std::to_string(GetLastError()));
+        }
+        if (written < buffer.size()) {
+            buffer.resize(written);
+            break;
+        }
+        buffer.resize(buffer.size() * 2);
     }
 
     // The config is named for the mod, not for the file the mod was loaded as.
@@ -438,12 +462,10 @@ std::string GetINIPath() {
     // was Data\NVSE\Plugins\HeadTracking.dll; the proxy deployment is called
     // dsound.dll, and that spelling sent it looking for DSOUND.ini and silently
     // gave every user defaults.
-    std::string modulePath(dllPath);
-    size_t slashPos = modulePath.find_last_of("\\/");
-    const std::string dir =
-        (slashPos == std::string::npos) ? std::string() : modulePath.substr(0, slashPos + 1);
-
-    return dir + "HeadTracking.ini";
+    const std::wstring modulePath(buffer.begin(), buffer.end());
+    const size_t slashPos = modulePath.find_last_of(L"\\/");
+    const std::wstring dir = slashPos == std::wstring::npos ? std::wstring() : modulePath.substr(0, slashPos + 1);
+    return dir + L"HeadTracking.ini";
 }
 
 }  // namespace HeadTracking

@@ -101,3 +101,7 @@ docker-compose*.yml text eol=lf
 # Differential test inputs are the exact bytes published builds shipped or wrote
 # (first-run files are CRLF); normalising them would test other files.
 tests/config_differential/data/** -text
+
+# The canonical config is committed as the renderer writes it: CRLF, byte for
+# byte what a first launch creates.
+config/HeadTracking.ini -text

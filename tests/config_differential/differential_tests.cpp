@@ -3,24 +3,36 @@
 // fnv_config_differential <path to fnv_config_oracle.exe>
 //
 // Every input is read three ways:
-//   oracle - v0.3.1's reader and startup code, the newest published build
-//            (fnv_config_oracle, built from oracle/);
-//   import - the frozen reader in src/legacy_config/ and the startup code that
-//            ran on it.
+//   oracle    - v0.3.1's reader and startup code, the newest published build
+//               (fnv_config_oracle, built from oracle/);
+//   import    - the frozen reader in src/legacy_config/ and the startup code
+//               that ran on it;
+//   migration - ConfigOwner on a copy: the import, the map into Config, the
+//               render, the commit, then the canonical reader and table, and
+//               the game's startup code on the result.
 //
 // Comparison 1, oracle against import, is what a player sees change that the
 // conversion did not cause: commits since v0.3.1 that changed how the file is
 // read. Every difference it finds must be one of kReaderChanges below.
+//
+// Comparison 2, import against migration, is the proof for the migration: no
+// difference apart from the approved drops the import records (core's
+// data/config-format.json) and the one default the conversion moves, which
+// only the no-file input shows.
 
 #include "record.h"
 
+#include "config.h"
 #include "legacy_config/legacy_config.h"
 
+#include <cameraunlock/config/canonical_ini.h>
+#include <cameraunlock/config/config_owner.h>
 #include <cameraunlock/config/legacy_import.h>
 #include <cameraunlock/config/testing/ini_mutations.h>
 
 #include <Windows.h>
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -41,7 +53,9 @@ using fnv_differential::Flag;
 using fnv_differential::Hex;
 using fnv_differential::kCtrlShift;
 using fnv_differential::Record;
+using HeadTracking::Config;
 using HeadTracking::legacy::ReadStatus;
+namespace cfg = cameraunlock::config;
 
 namespace {
 
@@ -286,6 +300,188 @@ std::string Describe(const Record& record) {
     return text;
 }
 
+const char* ModeName(cameraunlock::TrackingMode mode) {
+    switch (mode) {
+        case cameraunlock::TrackingMode::RotationAndPosition:
+            return "RotationAndPosition";
+        case cameraunlock::TrackingMode::RotationOnly:
+            return "RotationOnly";
+        case cameraunlock::TrackingMode::PositionOnly:
+            return "PositionOnly";
+    }
+    throw std::logic_error("not a tracking mode");
+}
+
+std::string ListBindings(const std::string& list) {
+    std::vector<std::pair<unsigned, int>> items;
+    for (const auto& binding : HeadTracking::KeyBindings(list)) {
+        items.push_back({static_cast<unsigned>(binding.modifiers), binding.vk});
+    }
+    return Bindings(items);
+}
+
+// A Config through the game's startup code (HeadTrackingPlugin::Initialize and
+// ApplyConfig), in the names ImportRecord uses.
+Record ConfigRecord(const Config& config) {
+    Record record;
+    record["field.udpPort"] = std::to_string(config.udp_port);
+    record["field.localSmoothing"] = Bits(config.local_smoothing);
+    record["field.remoteSmoothing"] = Bits(config.remote_smoothing);
+    record["field.debounceMs"] = std::to_string(config.hotkey_debounce_ms);
+    record["field.inputBlockMode"] = std::to_string(static_cast<int>(config.input_block_mode));
+    record["field.trackInThirdPerson"] = Flag(config.track_in_third_person);
+    record["field.trackInVATS"] = Flag(config.track_in_vats);
+    record["field.pauseDuringCombat"] = Flag(config.pause_during_combat);
+    record["field.worldSpaceYaw"] = Flag(config.world_space_yaw);
+    record["startup.enabled"] = Flag(config.enable_on_startup);
+    record["startup.mode"] = ModeName(HeadTracking::StartupTrackingMode(config));
+    record["startup.worldSpaceYaw"] = Flag(config.world_space_yaw);
+    record["hotkey.Toggle"] = ListBindings(config.toggle_key);
+    record["hotkey.CycleTrackingMode"] = ListBindings(config.cycle_tracking_mode_key);
+    record["hotkey.YawMode"] = ListBindings(config.yaw_mode_key);
+    return record;
+}
+
+bool Dropped(const cfg::ImportResult& import, cfg::DropRule rule, const char* section, const char* key) {
+    for (const auto& dropped : import.dropped) {
+        if (dropped.rule == rule && dropped.section == section && dropped.key == key) return true;
+    }
+    return false;
+}
+
+bool IsNaN(const std::string& bits) {
+    const unsigned long long value = std::stoull(bits, nullptr, 16);
+    double number = 0;
+    std::memcpy(&number, &value, sizeof(number));
+    return std::isnan(number);
+}
+
+// Comparison 2 for one input: empty when every difference between the import
+// and the migration is one core's data/config-format.json approves, and the
+// import recorded it; otherwise what is left.
+std::vector<std::string> UnexplainedMigrationDifferences(const std::string& input, const Record& import,
+                                                         const cfg::ImportResult& result, const Record& migration) {
+    std::vector<std::string> left;
+    if (import.at("status") != migration.at("status")) {
+        left.push_back("status " + import.at("status") + " -> " + migration.at("status"));
+        return left;
+    }
+    if (import.at("status") == "refused") {
+        if (import.at("reason") != migration.at("reason")) left.push_back("reason");
+        return left;
+    }
+    std::set<std::string> names;
+    for (const auto& entry : import) names.insert(entry.first);
+    for (const auto& entry : migration) names.insert(entry.first);
+    const Config defaults;
+    for (const std::string& name : names) {
+        const auto i = import.find(name);
+        const auto m = migration.find(name);
+        if (i != import.end() && m != migration.end() && i->second == m->second) continue;
+        // The raw codes are compared as the bindings they register (hotkey.*).
+        if (name == "field.toggleKey" || name == "field.cycleTrackingModeKey" || name == "field.yawModeKey" ||
+            name == "field.reticleToggleKey") {
+            continue;
+        }
+        // [Feedback] ShowMessages is dead: it gated messages to a game console
+        // this build never had (g_ConsolePrint is always null).
+        if (name == "field.showMessages") continue;
+        // Approved change `reticle`: the reticle toggle key and its chord.
+        if (name == "hotkey.ReticleToggle" && m == migration.end() &&
+            Dropped(result, cfg::DropRule::Reticle, "Hotkeys", "ReticleToggle")) {
+            continue;
+        }
+        // Normalisation N2: a NaN smoothing, which the range check let through.
+        if (name == "field.localSmoothing" && IsNaN(i->second) && m->second == Bits(defaults.local_smoothing) &&
+            Dropped(result, cfg::DropRule::NonFiniteNumber, "Smoothing", "LocalSmoothing")) {
+            continue;
+        }
+        if (name == "field.remoteSmoothing" && IsNaN(i->second) && m->second == Bits(defaults.remote_smoothing) &&
+            Dropped(result, cfg::DropRule::NonFiniteNumber, "Smoothing", "RemoteSmoothing")) {
+            continue;
+        }
+        // The moved default: with no file, the yaw mode takes the fleet's
+        // PageDown / Ctrl+Shift+H in place of the Delete / Ctrl+Shift+J the
+        // published build's first-run file wrote.
+        if (name == "hotkey.YawMode" && input == "no file" && m->second == ListBindings(defaults.yaw_mode_key)) {
+            continue;
+        }
+        left.push_back(name + ": " + (i == import.end() ? "(none)" : i->second) + " -> " +
+                       (m == migration.end() ? "(none)" : m->second));
+    }
+    return left;
+}
+
+std::vector<std::pair<std::string, std::string>> Listing(const fs::path& dir) {
+    std::vector<std::pair<std::string, std::string>> files;
+    for (const auto& entry : fs::directory_iterator(dir)) {
+        files.push_back({entry.path().filename().string(), ReadBytes(entry.path())});
+    }
+    std::sort(files.begin(), files.end());
+    return files;
+}
+
+cfg::LegacyInput InputFor(const fs::path& path) {
+    return cfg::LegacyInput{path.wstring(), path.string(), false};
+}
+
+std::string RenderedDefaults() {
+    const cfg::ConfigTable<Config> table = HeadTracking::ConfigTable();
+    cfg::RenderHeader header;
+    header.display_name = HeadTracking::kGameDisplayName;
+    return cfg::RenderCanonical(table, table.defaults(), header);
+}
+
+// Runs the migration on the input at dir/migrate and checks what the design
+// asks of it beyond comparison 2. Returns the migration's record.
+Record Migrate(const Input& input, const fs::path& dir, const cfg::ImportResult& imported) {
+    const fs::path path = dir / "HeadTracking.ini";
+    cfg::ConfigOwner<Config> owner(HeadTracking::ConfigOwnerOptions(path.wstring()));
+    const cfg::ConfigLoadResult<Config> loaded = owner.Load();
+    const std::string label = input.name + ": ";
+    Record record;
+    switch (loaded.status) {
+        case cfg::ConfigLoadStatus::LegacyRefused:
+            record["status"] = "refused";
+            record["reason"] = imported.status == cfg::ImportStatus::Refused ? imported.reason : std::string();
+            Check(ReadBytes(path) == *input.bytes, label + "a refused file keeps its bytes");
+            Check(!fs::exists(dir / "HeadTracking.ini.pre-canonical"), label + "a refused file gets no copy");
+            return record;
+        case cfg::ConfigLoadStatus::Created:
+            record = ConfigRecord(loaded.config);
+            record["status"] = "absent";
+            Check(ReadBytes(path) == RenderedDefaults(), label + "a first launch writes the committed file's bytes");
+            return record;
+        case cfg::ConfigLoadStatus::Migrated:
+            break;
+        default:
+            Fail(label + "the migration loaded " + cfg::ConfigLoadStatusName(loaded.status) +
+                 (loaded.reason.empty() ? std::string() : ": " + loaded.reason));
+            return Record{{"status", cfg::ConfigLoadStatusName(loaded.status)}};
+    }
+    record = ConfigRecord(loaded.config);
+    record["status"] = "usable";
+
+    const std::string migrated = ReadBytes(path);
+    Check(cfg::HasCanonicalStamp(migrated), label + "the migrated file carries the stamp");
+    const cfg::CanonicalIni doc = cfg::ParseCanonicalIni(migrated);
+    Config reread = HeadTracking::ConfigTable().defaults();
+    Check(doc.IsReadable() && doc.diagnostics.empty() &&
+              cfg::ApplyCanonical(doc, HeadTracking::ConfigTable(), reread).diagnostics.empty(),
+          label + "the migrated file reads without a diagnostic");
+    cfg::RenderHeader header;
+    header.display_name = HeadTracking::kGameDisplayName;
+    Check(cfg::RenderCanonical(HeadTracking::ConfigTable(), reread, header) == migrated,
+          label + "rendering the migrated settings gives the migrated bytes");
+    Check(ReadBytes(dir / "HeadTracking.ini.pre-canonical") == *input.bytes,
+          label + "HeadTracking.ini.pre-canonical holds the input");
+
+    cfg::ConfigOwner<Config> relaunch(HeadTracking::ConfigOwnerOptions(path.wstring()));
+    Check(relaunch.Load().status == cfg::ConfigLoadStatus::Canonical && ReadBytes(path) == migrated,
+          label + "migrating the migrated file does nothing");
+    return record;
+}
+
 fs::path MakeTempRoot() {
     wchar_t temp[MAX_PATH + 1];
     if (GetTempPathW(MAX_PATH + 1, temp) == 0) throw std::runtime_error("GetTempPathW failed");
@@ -342,6 +538,54 @@ int main(int argc, char** argv) {
         std::printf("  %s\n    %zu inputs, e.g. %s\n", change.description, count,
                     count == 0 ? "none" : seen->second.front().c_str());
         Check(count > 0, std::string("no input shows the recorded change '") + change.id + "'");
+    }
+
+    // Comparison 2 and the migration's own checks.
+    std::size_t migrated = 0;
+    for (std::size_t i = 0; i < inputs.size(); ++i) {
+        const Input& input = inputs[i];
+        const fs::path dir = root / std::to_string(i);
+        const Record import = ImportRecord(dir / "import" / "HeadTracking.ini");
+
+        // The import on a read-only copy, as the owner runs it, leaves the
+        // folder as it was.
+        const fs::path readOnly = dir / "read-only";
+        fs::create_directories(readOnly);
+        if (input.bytes) {
+            WriteBytes(readOnly / "HeadTracking.ini", *input.bytes);
+            SetFileAttributesW((readOnly / "HeadTracking.ini").c_str(), FILE_ATTRIBUTE_READONLY);
+        }
+        const auto before = Listing(readOnly);
+        Config mapped;
+        const cfg::ImportResult result = HeadTracking::ConfigLegacyImport().run(InputFor(readOnly / "HeadTracking.ini"), mapped);
+        Check(Listing(readOnly) == before, input.name + ": the import writes nothing");
+        if (input.bytes) SetFileAttributesW((readOnly / "HeadTracking.ini").c_str(), FILE_ATTRIBUTE_NORMAL);
+
+        fs::create_directories(dir / "migrate");
+        if (input.bytes) WriteBytes(dir / "migrate" / "HeadTracking.ini", *input.bytes);
+        const Record migration = Migrate(input, dir / "migrate", result);
+        if (migration.at("status") == "usable") ++migrated;
+        const auto left = UnexplainedMigrationDifferences(input.name, import, result, migration);
+        for (const std::string& difference : left) {
+            Fail("comparison 2, " + input.name + ": " + difference);
+        }
+    }
+    std::printf("Comparison 2 (the frozen reader against the migration): %zu inputs migrated\n", migrated);
+
+    // A player who installed the newest published build and changed nothing
+    // gets the committed file, apart from the yaw mode key the build shipped.
+    const std::string committed = ReadBytes(fs::path(FNV_SOURCE_DIR) / "config" / "HeadTracking.ini");
+    Check(committed == RenderedDefaults(), "config/HeadTracking.ini is what the table renders");
+    const std::string expectedUpgrade =
+        Replace(committed, "YawModeKey=PageDown, Ctrl+Shift+H\r\n", "YawModeKey=Delete, Ctrl+Shift+J\r\n");
+    for (const char* file : {"v0.3.1/shipped.ini", "v0.3.1/seed.ini", "v0.3.1/first-run.ini"}) {
+        const fs::path dir = root / "upgrade" / fs::path(file).stem();
+        fs::create_directories(dir);
+        WriteBytes(dir / "HeadTracking.ini", ReadBytes(kData / file));
+        cfg::ConfigOwner<Config> owner(HeadTracking::ConfigOwnerOptions((dir / "HeadTracking.ini").wstring()));
+        Check(owner.Load().status == cfg::ConfigLoadStatus::Migrated, std::string(file) + " migrates");
+        Check(ReadBytes(dir / "HeadTracking.ini") == expectedUpgrade,
+              std::string(file) + " migrates to the committed file with the Delete / Ctrl+Shift+J yaw key it shipped");
     }
 
     fs::remove_all(root);

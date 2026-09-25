@@ -1,58 +1,60 @@
-#include <Windows.h>
-
 #include "config.h"
-#include "plugin.h"
-#include "camera_controller.h"
-#include "hotkey_handler.h"
-#include "game_state.h"
-#include "udp_receiver.h"
+
 #include "legacy_config/legacy_config.h"
 
-#include <cameraunlock/logging/file_log.h>
-#include <cameraunlock/math/smoothing_utils.h>
-
-#include <cstdarg>
 #include <cstdio>
-#include <fstream>
 #include <stdexcept>
-#include <string>
+#include <utility>
 
 namespace HeadTracking {
 
-namespace culog = cameraunlock::logging;
+namespace cfg = cameraunlock::config;
+using cfg::schema::Concept;
+using cameraunlock::input::KeyBinding;
+using cameraunlock::input::KeyModifiers;
 
-// Every reason Config::Load can fail has to reach the file log. g_ConsolePrint
-// is null in a shipping build (see udp_receiver.cpp), so routing a validation
-// failure only there left the user with plugin.cpp's "failed to load config -
-// head tracking is inactive" and nothing naming the key at fault.
-static void ConfigDiag(const char* level, const char* fmt, ...) {
-    char msg[512] = {};
-    va_list args;
-    va_start(args, fmt);
-    std::vsnprintf(msg, sizeof(msg), fmt, args);
-    va_end(args);
-    culog::Line("config: %s - %s", level, msg);
-    if (g_ConsolePrint) {
-        g_ConsolePrint("HeadTracking: %s - %s", level, msg);
-    }
+cfg::ConfigTable<Config> ConfigTable() {
+    cfg::ConfigTable<Config> table{Config{}};
+    table.Concept<Concept::UdpPort>(&Config::udp_port)
+        .Comment("UDP port the mod receives tracker data on (OpenTrack protocol).\n"
+                 "Restart the game after changing it.")
+        .Concept<Concept::EnableOnStartup>(&Config::enable_on_startup)
+        .Concept<Concept::WorldSpaceYaw>(&Config::world_space_yaw)
+        .Writable()
+        .Concept<Concept::RotationEnabled>(&Config::rotation_enabled)
+        .Writable()
+        .Concept<Concept::LocalSmoothing>(&Config::local_smoothing)
+        .Concept<Concept::RemoteSmoothing>(&Config::remote_smoothing)
+        .Concept<Concept::PositionEnabled>(&Config::position_enabled)
+        .Writable()
+        .Concept<Concept::ToggleKey>(&Config::toggle_key)
+        .Concept<Concept::CycleTrackingModeKey>(&Config::cycle_tracking_mode_key)
+        .Concept<Concept::YawModeKey>(&Config::yaw_mode_key)
+        .Local("GameState", "TrackInThirdPerson", &Config::track_in_third_person, cfg::BoolCodec(),
+               "true: head tracking also works in the third-person camera.")
+        .Local("GameState", "TrackInVATS", &Config::track_in_vats, cfg::BoolCodec(),
+               "true: head tracking stays on in VATS. false: it pauses there.")
+        .Local("GameState", "PauseDuringCombat", &Config::pause_during_combat, cfg::BoolCodec(),
+               "true: head tracking pauses while you are in combat.")
+        .Local("Input", "InputBlockMode", &Config::input_block_mode,
+               cfg::EnumCodec<InputBlockMode>{{"Never", InputBlockMode::Never},
+                                              {"MenusOnly", InputBlockMode::MenusOnly},
+                                              {"AllDialogue", InputBlockMode::AllDialogue},
+                                              {"AllOverlays", InputBlockMode::AllOverlays}},
+               "When the hotkeys are ignored. They never work on a loading screen or in character creation.\n"
+               "Never: they work everywhere else.\n"
+               "MenusOnly: not while a menu is open or the game is paused.\n"
+               "AllDialogue: not in menus or conversations either.\n"
+               "AllOverlays: not in menus, conversations, the console, VATS or the Pip-Boy either.")
+        .Local("Input", "HotkeyDebounceMs", &Config::hotkey_debounce_ms, cfg::IntCodec<uint64_t>(),
+               "Milliseconds after a hotkey fires before it can fire again, 50 to 2000.")
+        .Range(50, 2000);
+    return table;
 }
 
-// Default values (match HeadTracking.ini defaults)
-constexpr uint16_t DEFAULT_UDP_PORT = 4242;
-constexpr double DEFAULT_LOCAL_SMOOTHING = cameraunlock::math::kDefaultLocalSmoothing;
-constexpr double DEFAULT_REMOTE_SMOOTHING = cameraunlock::math::kDefaultRemoteSmoothing;
-constexpr uint64_t DEFAULT_DEBOUNCE_MS = 200;
-constexpr int DEFAULT_INPUT_BLOCK_MODE = 0;  // Never
+namespace {
 
-Config::Config()
-    : m_iniPath()
-    , m_loaded(false) {
-}
-
-Config::~Config() {
-}
-
-static InputBlockMode ToInputBlockMode(legacy::InputBlockMode mode) {
+InputBlockMode ToInputBlockMode(legacy::InputBlockMode mode) {
     switch (mode) {
         case legacy::InputBlockMode::Never:
             return InputBlockMode::Never;
@@ -66,220 +68,83 @@ static InputBlockMode ToInputBlockMode(legacy::InputBlockMode mode) {
     throw std::logic_error("legacy InputBlockMode " + std::to_string(static_cast<int>(mode)) + " has no runtime mode");
 }
 
-// Warned once per process rather than once per load: config is reloadable, and
-// repeating this on every reload buries it.
-//
-// The old value is deliberately NOT migrated into the new keys. The single
-// Smoothing value carried a hidden 0.15 floor, so the number in an existing
-// config does not mean what it used to: copying it across would hand a local
-// user smoothing they never chose under the new semantics, and copying it into
-// only one of the two keys would be a guess about which connection they were on.
-static void WarnRetiredSmoothingKey(const cameraunlock::IniReader& ini,
-                                    const char* section, const char* key) {
-    static bool warned = false;
-    if (warned) return;
-    if (ini.ReadString(section, key, "").empty()) return;
-    warned = true;
-    ConfigDiag("WARNING",
-        "Config key [%s] %s has been retired and is IGNORED. "
-        "Smoothing is now two keys: LocalSmoothing (default 0, applies to a tracker "
-        "on this machine) and RemoteSmoothing (default 0.15, applies to a tracker on "
-        "the network). The old value is not migrated because the semantics changed - "
-        "it carried a hidden 0.15 floor that no longer exists. Set the two new keys.",
-        section, key);
+// A legacy action: its code in the file, which fired while Ctrl and Shift were
+// not both held, and the Ctrl+Shift letter the build fixed in code. The frozen
+// reader refuses a code outside 0x01-0xFE, so every code here has a binding.
+std::string WithChord(int code, char letter) {
+    return cameraunlock::input::FormatKeyBindings(
+        {KeyBinding{KeyModifiers::kNone, code}, KeyBinding{KeyModifiers::kCtrl | KeyModifiers::kShift, letter}});
 }
 
-bool Config::Load(const std::string& iniPath) {
-    if (iniPath.empty()) {
-        ConfigDiag("ERROR", "Config::Load called with empty path");
-        return false;
-    }
-
-    m_iniPath = iniPath;
-
-    // Check if file exists - create default config if missing
-    DWORD attrs = GetFileAttributesA(m_iniPath.c_str());
-    if (attrs == INVALID_FILE_ATTRIBUTES) {
-        if (g_ConsolePrint) {
-            g_ConsolePrint("HeadTracking: Config file not found: %s", m_iniPath.c_str());
-            g_ConsolePrint("HeadTracking: Creating default configuration...");
-        }
-        if (!CreateDefaultConfig()) {
-            ConfigDiag("ERROR", "Failed to create default config file at %s", m_iniPath.c_str());
-            return false;
-        }
-        if (g_ConsolePrint) {
-            g_ConsolePrint("HeadTracking: Default config created successfully");
-        }
-    }
-
-    // Open with the shared INI reader (also captures mod time for change detection)
-    if (!m_ini.Open(m_iniPath)) {
-        ConfigDiag("ERROR", "Failed to open config file %s", m_iniPath.c_str());
-        return false;
-    }
-
-    if (g_ConsolePrint) {
-        g_ConsolePrint("HeadTracking: Loading config from %s", m_iniPath.c_str());
-    }
-
-    if (!m_ini.ReadString("Sensitivity", "Yaw", "").empty() ||
-        !m_ini.ReadString("Deadzone", "Yaw", "").empty() ||
-        !m_ini.ReadString("Camera", "Mode", "").empty()) {
-        ConfigDiag("WARNING", "Sensitivity, Deadzone and Camera.Mode are retired and ignored. Configure pose shaping in the tracker; tracking now always leaves player aim unchanged.");
-    }
-
-    WarnRetiredSmoothingKey(m_ini, "Smoothing", "Amount");
-
-    const legacy::ReadResult read = legacy::Read(m_iniPath, m_values);
-    if (read.status == legacy::ReadStatus::Absent) {
-        ConfigDiag("ERROR", "Failed to open config file %s", m_iniPath.c_str());
-        return false;
-    }
-    if (read.status == legacy::ReadStatus::Refused) {
-        ConfigDiag("ERROR", "%s", read.error.c_str());
-        return false;
-    }
-
-    m_loaded = true;
-
-    if (g_ConsolePrint) {
-        g_ConsolePrint("HeadTracking: Config loaded successfully");
-        g_ConsolePrint("HeadTracking:   UDP Port: %u", m_values.udpPort);
-        g_ConsolePrint("HeadTracking:   Smoothing: %.2f local / %.2f remote",
-                       m_values.localSmoothing, m_values.remoteSmoothing);
-
-    }
-
-    return true;
+std::string CodeText(int code) {
+    char text[16];
+    std::snprintf(text, sizeof(text), "0x%02X", code);
+    return text;
 }
 
-bool Config::Reload() {
-    if (m_iniPath.empty()) {
-        if (g_ConsolePrint) {
-            g_ConsolePrint("HeadTracking: ERROR - Cannot reload config, no path set");
-        }
-        return false;
-    }
+cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
+    legacy::Config read;
+    const legacy::ReadResult result = legacy::Read(input.ansi_path, read);
+    if (result.status == legacy::ReadStatus::Refused) return cfg::ImportResult::Refused(result.error);
 
-    if (g_ConsolePrint) {
-        g_ConsolePrint("HeadTracking: Reloading configuration...");
-    }
+    const Config defaults;
+    std::vector<cfg::DroppedValue> dropped;
+    out.udp_port = read.udpPort;
+    // The published build started with head tracking on, in the rotation and
+    // position mode, whatever the file said.
+    out.enable_on_startup = true;
+    out.rotation_enabled = true;
+    out.position_enabled = true;
+    out.world_space_yaw = read.worldSpaceYaw;
+    // The range checks let a NaN through, which N2 takes to the default.
+    out.local_smoothing =
+        cfg::LegacyFiniteOrDefault(read.localSmoothing, defaults.local_smoothing, "Smoothing", "LocalSmoothing", dropped);
+    out.remote_smoothing = cfg::LegacyFiniteOrDefault(read.remoteSmoothing, defaults.remote_smoothing, "Smoothing",
+                                                      "RemoteSmoothing", dropped);
+    out.toggle_key = WithChord(read.toggleKey, 'Y');
+    out.cycle_tracking_mode_key = WithChord(read.cycleTrackingModeKey, 'G');
+    dropped.push_back({cfg::DropRule::Reticle, "Hotkeys", "ReticleToggle", CodeText(read.reticleToggleKey)});
+    out.yaw_mode_key = WithChord(read.yawModeKey, 'J');
+    out.hotkey_debounce_ms = read.debounceMs;
+    out.input_block_mode = ToInputBlockMode(read.inputBlockMode);
+    out.track_in_third_person = read.trackInThirdPerson;
+    out.track_in_vats = read.trackInVATS;
+    out.pause_during_combat = read.pauseDuringCombat;
+    // [Feedback] ShowMessages is not carried: it only gated messages to a game
+    // console the build never had (g_ConsolePrint was always null).
 
-    // Re-load from the same path
-    return Load(m_iniPath);
+    if (result.status == legacy::ReadStatus::Absent) return cfg::ImportResult::Absent(std::move(dropped));
+    return cfg::ImportResult::Imported(std::move(dropped));
 }
 
-bool Config::HasFileChanged() const {
-    return m_ini.HasChanged();
+}  // namespace
+
+cfg::LegacyImport<Config> ConfigLegacyImport() {
+    cfg::LegacyImport<Config> import;
+    import.run = &RunImport;
+    for (const legacy::Key& key : legacy::ReadKeys()) import.keys.push_back({key.section, key.key});
+    return import;
 }
 
-bool Config::ApplyToComponents(CameraController* camera, HotkeyHandler* hotkey,
-                               GameState* gameState, UdpReceiver* udpReceiver) {
-    if (!m_loaded) {
-        if (g_ConsolePrint) {
-            g_ConsolePrint("HeadTracking: ERROR - Cannot apply config, not loaded");
-        }
-        return false;
-    }
-
-    // Apply to camera controller
-    if (camera) {
-        camera->SetLocalSmoothing(m_values.localSmoothing);
-        camera->SetRemoteSmoothing(m_values.remoteSmoothing);
-        camera->SetWorldSpaceYaw(m_values.worldSpaceYaw);
-    }
-
-    // Apply to hotkey handler - FAIL FAST if key codes are invalid
-    if (hotkey) {
-        if (!hotkey->SetToggleKey(m_values.toggleKey)) {
-            return false;
-        }
-        if (!hotkey->SetCycleTrackingModeKey(m_values.cycleTrackingModeKey)) {
-            return false;
-        }
-        if (!hotkey->SetReticleToggleKey(m_values.reticleToggleKey)) {
-            return false;
-        }
-        if (!hotkey->SetYawModeKey(m_values.yawModeKey)) {
-            return false;
-        }
-        hotkey->SetDebounceTime(m_values.debounceMs);
-        hotkey->SetShowMessages(m_values.showMessages);
-    }
-
-    // Apply to game state
-    if (gameState) {
-        gameState->SetInputBlockMode(ToInputBlockMode(m_values.inputBlockMode));
-        gameState->SetTrackInThirdPerson(m_values.trackInThirdPerson);
-        gameState->SetTrackInVATS(m_values.trackInVATS);
-        gameState->SetPauseDuringCombat(m_values.pauseDuringCombat);
-    }
-
-    // Note: UDP port can't be changed at runtime without reinitializing the socket
-    // That would require a full shutdown/init cycle which is disruptive
-    // Users must restart the game to change UDP port
-    (void)udpReceiver;
-
-    if (g_ConsolePrint) {
-        g_ConsolePrint("HeadTracking: Configuration applied to components");
-    }
-
-    return true;
+cfg::ConfigOwnerOptions<Config> ConfigOwnerOptions(std::wstring path) {
+    cfg::ConfigOwnerOptions<Config> options;
+    options.path = std::move(path);
+    options.table = ConfigTable();
+    options.import = ConfigLegacyImport();
+    options.header.display_name = kGameDisplayName;
+    return options;
 }
 
-bool Config::CreateDefaultConfig() {
-    if (m_iniPath.empty()) {
-        return false;
-    }
+cameraunlock::TrackingMode StartupTrackingMode(const Config& config) {
+    const auto mode = cameraunlock::DecodeTrackingMode(config.rotation_enabled, config.position_enabled);
+    if (!mode) throw std::logic_error("RotationEnabled and PositionEnabled are both false, which the table never gives");
+    return *mode;
+}
 
-    std::ofstream file(m_iniPath);
-    if (!file.is_open()) {
-        return false;
-    }
-
-    file << "; HeadTracking Configuration\n";
-    file << "; Auto-generated with default values\n";
-    file << "\n";
-    file << "[Network]\n";
-    file << "; UDP port for OpenTrack data (default: 4242)\n";
-    file << "Port=" << DEFAULT_UDP_PORT << "\n";
-    file << "\n";
-    file << "[Smoothing]\n";
-    file << "; Smoothing applied when the tracker runs on this machine (loopback).\n";
-    file << "; 0 = no smoothing, 1 = heavy. Covers rotation and position.\n";
-    file << "LocalSmoothing=" << DEFAULT_LOCAL_SMOOTHING << "\n";
-    file << "; Smoothing applied when the tracker is a remote device on the network.\n";
-    file << "; 0 = no smoothing, 1 = heavy. Covers rotation and position.\n";
-    file << "RemoteSmoothing=" << DEFAULT_REMOTE_SMOOTHING << "\n";
-    file << "\n";
-    file << "[Hotkeys]\n";
-    file << "; Nav-cluster virtual key codes (hex). Each action also accepts a\n";
-    file << "; fixed Ctrl+Shift+<letter> chord (Y/G/H/J) which is not configurable.\n";
-    file << "; End=0x23, PageUp=0x21, PageDown=0x22, Delete=0x2E\n";
-    file << "Toggle=0x23\n";
-    file << "CycleTrackingMode=0x21\n";
-    file << "ReticleToggle=0x22\n";
-    file << "; Delete / Ctrl+Shift+J\n";
-    file << "YawModeKey=0x2E\n";
-    file << "DebounceMs=" << DEFAULT_DEBOUNCE_MS << "\n";
-    file << "\n";
-    file << "[GameState]\n";
-    file << "; InputBlockMode: 0=Never, 1=MenusOnly, 2=AllDialogue, 3=AllOverlays\n";
-    file << "InputBlockMode=" << DEFAULT_INPUT_BLOCK_MODE << "\n";
-    file << "TrackInThirdPerson=1\n";
-    file << "TrackInVATS=0\n";
-    file << "PauseDuringCombat=0\n";
-    file << "\n";
-    file << "[Feedback]\n";
-    file << "ShowMessages=1\n";
-    file << "\n";
-    file << "[Camera]\n";
-    file << "; WorldSpaceYaw: 1 = horizon-locked yaw (default), 0 = camera-local\n";
-    file << "WorldSpaceYaw=1\n";
-
-    file.close();
-    return true;
+std::vector<KeyBinding> KeyBindings(const std::string& list) {
+    cameraunlock::input::KeyBindingsParseResult parsed = cameraunlock::input::ParseKeyBindings(list);
+    if (!parsed.ok()) throw std::invalid_argument("hotkey list '" + list + "': " + parsed.error);
+    return std::move(parsed.bindings);
 }
 
 }  // namespace HeadTracking

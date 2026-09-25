@@ -353,7 +353,7 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
         }
     }
     if (isMainCamera && controller && controller->IsActive() && !IsGamePaused() &&
-        !IsPlayerAiming() && g_reticleEnabled) {
+        !IsPlayerAiming()) {
         SetCrosshairTileVisible(false);
         g_crosshairDisabled = true;
     }

@@ -42,7 +42,6 @@ extern IDirect3DDevice9* g_stateBlockDevice;
 
 // Crosshair UI state
 extern bool g_crosshairDisabled;
-extern bool g_reticleEnabled;
 
 // Check if game is paused (menu open)
 bool IsGamePaused();

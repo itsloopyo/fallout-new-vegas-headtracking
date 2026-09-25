@@ -154,15 +154,6 @@ void CameraController::SetWorldSpaceYaw(bool worldSpace) {
     m_worldSpaceYaw = worldSpace;
 }
 
-void CameraController::ToggleYawMode() {
-    m_worldSpaceYaw = !m_worldSpaceYaw;
-
-    if (g_ConsolePrint) {
-        g_ConsolePrint("HeadTracking: Yaw mode: %s",
-                       m_worldSpaceYaw ? "world-space (horizon-locked)" : "camera-local");
-    }
-}
-
 }  // namespace HeadTracking
 
 namespace HeadTracking {

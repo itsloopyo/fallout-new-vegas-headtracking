@@ -123,18 +123,28 @@ view sits off to one side, centre it in the tracker.
 
 ## Controls
 
-| Action | Nav-cluster | Chord |
-|--------|-------------|-------|
-| Toggle tracking | `End` | `Ctrl+Shift+Y` |
-| Cycle rotation and position | `Page Up` | `Ctrl+Shift+G` |
-| Toggle hip-fire reticle | `Page Down` | `Ctrl+Shift+H` |
-| Toggle yaw mode | `Delete` | `Ctrl+Shift+J` |
+| Action | Default keys |
+|--------|--------------|
+| Toggle tracking | `End`, `Ctrl+Shift+Y` |
+| Cycle rotation and position | `Page Up`, `Ctrl+Shift+G` |
+| Toggle yaw mode | `Page Down`, `Ctrl+Shift+H` |
 
-Page Up cycles full tracking, rotation only, then position only. Delete switches
-between horizon-locked yaw and camera-local yaw.
+Each action takes every key its line under `[Hotkeys]` in `HeadTracking.ini`
+lists, the chord included, so you can change or remove any of them. A key listed
+without Ctrl and Shift does not fire while both are held. Hotkeys act only while
+the game is the window in front.
+
+Page Up cycles full tracking, rotation only, then position only. Page Down
+switches between horizon-locked yaw and camera-local yaw. Both are saved to
+`HeadTracking.ini` as you press them and come back the next time the game
+starts. End turns head tracking on or off for the current session only; whether
+it is on when the game starts is `EnableOnStartup`.
+
+A `HeadTracking.ini` from an earlier version keeps the yaw mode key it had: the
+key its `YawModeKey` named, or `Delete` where it named none, with `Ctrl+Shift+J`
+beside it. The defaults above are what a new file holds.
 
 The gold hip-fire reticle marks your mouse/controller aim as you move your head.
-Page Down turns it off and restores the game's centred hip-fire crosshair.
 The game's own sights take over while you aim, so the reticle is hidden then.
 
 ### Aiming down sights
@@ -147,16 +157,97 @@ movement is scaled to the zoom, so a scope does not magnify it.
 ## Configuration
 
 `HeadTracking.ini` lives next to `FalloutNV.exe`. Changes are reloaded while
-running, except `[Network] Port`, which requires a game restart.
-See [the default configuration](config/HeadTracking.ini) for all keys.
+running, except `[Network] UdpPort`, which requires a game restart.
 
-`LocalSmoothing=0.0` and `RemoteSmoothing=0.15` under `[Smoothing]` select
-smoothing by connection source. Both cover rotation and position; zero disables
-smoothing. Configure sensitivity, deadzones, inversion and centring in your
-tracker. Old `[Sensitivity]`, `[Deadzone]` and `[Camera] Mode` entries are ignored.
+`LocalSmoothing` and `RemoteSmoothing` under `[Smoothing]` select smoothing by
+connection source. Both cover rotation and position; zero disables smoothing.
+Configure sensitivity, deadzones, inversion and centring in your tracker.
 Head tracking changes the rendered view without writing player aim.
 Positional leaning is limited by the game's world collision to keep the camera
 away from walls.
+
+<!-- cameraunlock:config -->
+The mod reads its settings from `HeadTracking.ini` in the game folder, at one of these paths depending on the store the game came from:
+
+- `HeadTracking.ini`
+- `Fallout New Vegas English\HeadTracking.ini`
+
+It creates the file when it starts and finds none. Edit it with any text editor.
+
+Earlier versions of the mod used an older layout for this file. The first time this version starts, it converts the file once into the layout below and keeps the file as it was beside it as `HeadTracking.ini.pre-canonical`. `HeadTracking.ini.pre-canonical.last`, when present, is the file as it was before the most recent conversion: the mod converts the file again when it finds the older layout later, for example after an older version of the mod rewrote it.
+
+Comments, and keys the mod never read, are not carried over. Nor are these, where your old file had them:
+
+- Reticle settings, and a key that toggled the reticle.
+- A sensitivity, scale, deadzone, response curve or axis inversion you changed from its default. Set these in your tracker instead.
+- The setting for a feature that earlier versions shipped switched off while it was untested. It now follows the mod's default.
+
+An older version of the mod may not read the new layout correctly. It reads a key that moved as its own default, and it can misread a hotkey or another value that is now written as a name. To go back to an older version, first copy `HeadTracking.ini.pre-canonical` back over `HeadTracking.ini`, which restores the old file.
+
+With every setting at its default, the file reads:
+
+```ini
+; Fallout: New Vegas head tracking settings.
+; Comments start with ; and go on their own line. Text after a value is part of the value.
+; Hotkeys are key names such as End, PageUp or Ctrl+Shift+Y. Separate several with commas; leave empty for none.
+
+[CameraUnlock]
+; Written by the mod. Leave this section in place.
+ConfigFormat=1
+
+[Network]
+; UDP port the mod receives tracker data on (OpenTrack protocol).
+; Restart the game after changing it.
+UdpPort=4242
+
+[General]
+; true: head tracking is on when the game starts. ToggleKey turns it on and off.
+EnableOnStartup=true
+; true: yaw turns around the world's up axis. false: around the camera's own up axis.
+WorldSpaceYaw=true
+; true: turning your head turns the view.
+; Tracking mode at startup, with PositionEnabled. The mode hotkey changes both.
+RotationEnabled=true
+
+[Smoothing]
+; Smoothing when the tracker runs on this PC. 0 is the least, 1 the most.
+LocalSmoothing=0.0
+; Smoothing when the tracker is another device on the network, such as a phone.
+; 0 is the least, 1 the most.
+RemoteSmoothing=0.15
+
+[Position]
+; true: moving your head moves the view.
+; Tracking mode at startup, with RotationEnabled. The mode hotkey changes both.
+PositionEnabled=true
+
+[Hotkeys]
+; Turns head tracking on and off.
+ToggleKey=End, Ctrl+Shift+Y
+; Changes the tracking mode: rotation and position, rotation only, position only.
+CycleTrackingModeKey=PageUp, Ctrl+Shift+G
+; Switches yaw between the world's up axis and the camera's own (WorldSpaceYaw).
+YawModeKey=PageDown, Ctrl+Shift+H
+
+[GameState]
+; true: head tracking also works in the third-person camera.
+TrackInThirdPerson=true
+; true: head tracking stays on in VATS. false: it pauses there.
+TrackInVATS=false
+; true: head tracking pauses while you are in combat.
+PauseDuringCombat=false
+
+[Input]
+; When the hotkeys are ignored. They never work on a loading screen or in character creation.
+; Never: they work everywhere else.
+; MenusOnly: not while a menu is open or the game is paused.
+; AllDialogue: not in menus or conversations either.
+; AllOverlays: not in menus, conversations, the console, VATS or the Pip-Boy either.
+InputBlockMode=Never
+; Milliseconds after a hotkey fires before it can fire again, 50 to 2000.
+HotkeyDebounceMs=200
+```
+<!-- /cameraunlock:config -->
 
 ## Troubleshooting
 

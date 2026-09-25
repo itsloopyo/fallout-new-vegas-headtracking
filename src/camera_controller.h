@@ -47,7 +47,6 @@ public:
     // Read by the D3D9 culling hook when composing the view rotation.
     void SetWorldSpaceYaw(bool worldSpace);
     bool IsWorldSpaceYaw() const { return m_worldSpaceYaw; }
-    void ToggleYawMode();
 
     // Get current applied offsets (used by D3D hook in decoupled mode)
     double GetCurrentYawOffset() const { return m_rotationEnabled ? m_smoothedYaw : 0.0; }

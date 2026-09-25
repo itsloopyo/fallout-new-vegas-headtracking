@@ -389,7 +389,7 @@ HRESULT STDMETHODCALLTYPE D3D9Hook::HookedPresent(IDirect3DDevice9* device, cons
                     D3D9Internal::g_crosshairDisabled = false;
                     HT_LOG_D3D("Crosshair: showing stock (paused=%d, ADS=%d)", isPaused, isAiming);
                 }
-            } else if (D3D9Internal::g_reticleEnabled) {
+            } else {
                 if (!D3D9Internal::g_crosshairDisabled) {
                     D3D9Internal::SetCrosshairTileVisible(false);
                     D3D9Internal::g_crosshairDisabled = true;
@@ -434,13 +434,6 @@ HRESULT STDMETHODCALLTYPE D3D9Hook::HookedPresent(IDirect3DDevice9* device, cons
                             }
                         }
                     }
-                }
-            } else {
-                // Reticle disabled by user - restore stock crosshair
-                if (D3D9Internal::g_crosshairDisabled) {
-                    D3D9Internal::SetCrosshairTileVisible(!isAiming && !isPaused);
-                    D3D9Internal::g_crosshairDisabled = false;
-                    HT_LOG_D3D("Crosshair: reticle user-disabled, restoring stock");
                 }
             }
         } else if (D3D9Internal::g_crosshairDisabled) {
