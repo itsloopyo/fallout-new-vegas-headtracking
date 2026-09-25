@@ -151,8 +151,9 @@ The game's own sights take over while you aim, so the reticle is hidden then.
 
 Head tracking stays on while you aim. The weapon stays where your mouse or
 controller points it, so with your head turned it sits off to one side with its
-sights still lined up, and your rounds land where those sights point. Head
-movement is scaled to the zoom, so a scope does not magnify it.
+sights still lined up, and your rounds land where those sights point. When the
+game narrows its field of view as you zoom, the mod scales head yaw, pitch and
+lean down in proportion.
 
 ## Configuration
 
@@ -260,7 +261,8 @@ and whether another game is already using that port. Press End to enable
 tracking. For an unsupported build, include the fingerprint line in a bug report.
 
 If the view needs centring, use the centre control in your tracker. If yaw feels
-awkward at steep viewing angles, try Delete to switch yaw mode.
+awkward at steep viewing angles, switch yaw mode with the key `YawModeKey` lists
+(Page Down in a new install).
 
 **The weapon is off to one side when I aim down sights.** Your head is turned:
 the weapon stays on your aim and you are looking past it. Turn back to it, or
@@ -276,11 +278,12 @@ fully resolved.
 
 Use Lopari to update or remove its installed package. For a manual install, run
 `install.cmd` again to update, and `uninstall.cmd` to remove: it takes out this
-mod's `dsound.dll`, restores any DLL it backed up, and removes `HeadTracking.ini`
-and the logs. If you placed the files by hand, remove them the same way, and
+mod's `dsound.dll`, restores any DLL it backed up, and removes the logs. It
+leaves `HeadTracking.ini` in place, with the `HeadTracking.ini.pre-canonical`
+copies an update may have made beside it, so your settings are still there if you
+install again. If you placed the files by hand, remove them the same way, and
 remove the compatibility `Data/NVSE/Plugins/HeadTracking.dll` too if present.
-Keep a copy of your INI if you want your settings back later. Other mods may
-still need xNVSE.
+Other mods may still need xNVSE.
 
 ## Building from source
 
