@@ -36,6 +36,9 @@ set "SHIM_MARKER=FNV Head Tracking v"
 set "MOD_SEED_FILES=HeadTracking.ini"
 :: Post-install help text. `&echo ` starts each further line.
 set "MOD_CONTROLS=Controls (nav cluster / chord):&echo   End      / Ctrl+Shift+Y  Toggle head tracking&echo   PageUp   / Ctrl+Shift+G  Cycle tracking mode&echo   PageDown / Ctrl+Shift+H  Toggle the aim reticle&echo   Delete   / Ctrl+Shift+J  Toggle yaw mode"
+:: Not used by this mod. Set blank so a value another mod's wrapper left in
+:: the same console does not reach the body.
+set "SHIM_MARKER_ALT="
 :: --- END CONFIG BLOCK ---
 
 :: Pin delayed expansion off before `%*` is expanded on the `call` below.
