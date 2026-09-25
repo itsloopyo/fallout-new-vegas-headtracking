@@ -427,10 +427,14 @@ std::vector<std::string> UnexplainedMigrationDifferences(const std::string& inpu
             Dropped(result, cfg::DropRule::NonFiniteNumber, "Smoothing", "RemoteSmoothing")) {
             continue;
         }
-        // Not a section 6 rule or a moved default: the committed file takes the
-        // fleet's PageDown / Ctrl+Shift+H where v0.3.1 shipped Delete with a
-        // fixed Ctrl+Shift+J. Held open for an owner ruling under core's
-        // conversion_notes.fallout-new-vegas-headtracking.
+        // The yaw chord was Ctrl+Shift+J fixed in code, never a value a file held,
+        // and moves to the fleet's Ctrl+Shift+H. The key the file named stays.
+        if (name == "hotkey.YawMode" && input != "no file" &&
+            m->second == Bindings({{0, std::stoi(import.at("field.yawModeKey"), nullptr, 16)}, {kCtrlShift, 'H'}})) {
+            continue;
+        }
+        // The no-file case of the yaw key's moved default: a new file holds the
+        // fleet's PageDown / Ctrl+Shift+H where v0.3.1 defaulted to Delete.
         if (name == "hotkey.YawMode" && input == "no file" && m->second == ListBindings(defaults.yaw_mode_key)) {
             continue;
         }
@@ -614,12 +618,12 @@ int main(int argc, char** argv) {
     std::printf("Comparison 2 (the frozen reader against the migration): %zu inputs migrated\n", migrated);
 
     // A player who installed the newest published build and changed nothing
-    // gets the committed file, apart from the yaw mode key the build shipped,
-    // which awaits the same owner ruling as comparison 2's no-file exception.
+    // gets the committed file, apart from the Delete yaw key the build shipped
+    // in the file, which the conversion keeps.
     const std::string committed = ReadBytes(fs::path(FNV_SOURCE_DIR) / "config" / "HeadTracking.ini");
     Check(committed == RenderedDefaults(), "config/HeadTracking.ini is what the table renders");
     const std::string expectedUpgrade =
-        Replace(committed, "YawModeKey=PageDown, Ctrl+Shift+H\r\n", "YawModeKey=Delete, Ctrl+Shift+J\r\n");
+        Replace(committed, "YawModeKey=PageDown, Ctrl+Shift+H\r\n", "YawModeKey=Delete, Ctrl+Shift+H\r\n");
     for (const char* file : {"v0.3.1/shipped.ini", "v0.3.1/seed.ini", "v0.3.1/first-run.ini"}) {
         const fs::path dir = root / "upgrade" / fs::path(file).stem();
         fs::create_directories(dir);
@@ -627,7 +631,7 @@ int main(int argc, char** argv) {
         cfg::ConfigOwner<Config> owner(HeadTracking::ConfigOwnerOptions((dir / "HeadTracking.ini").wstring()));
         Check(owner.Load().status == cfg::ConfigLoadStatus::Migrated, std::string(file) + " migrates");
         Check(ReadBytes(dir / "HeadTracking.ini") == expectedUpgrade,
-              std::string(file) + " migrates to the committed file with the Delete / Ctrl+Shift+J yaw key it shipped");
+              std::string(file) + " migrates to the committed file with the Delete yaw key it shipped");
     }
 
     fs::remove_all(root);

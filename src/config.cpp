@@ -73,8 +73,8 @@ InputBlockMode ToInputBlockMode(legacy::InputBlockMode mode) {
 }
 
 // A legacy action: its code in the file, which fired while Ctrl and Shift were
-// not both held, and the Ctrl+Shift letter the build fixed in code. The frozen
-// reader refuses a code outside 0x01-0xFE, so every code here has a binding.
+// not both held, and its fleet Ctrl+Shift letter. The frozen reader refuses a
+// code outside 0x01-0xFE, so every code here has a binding.
 std::string WithChord(int code, char letter) {
     return cameraunlock::input::FormatKeyBindings(
         {KeyBinding{KeyModifiers::kNone, code}, KeyBinding{KeyModifiers::kCtrl | KeyModifiers::kShift, letter}});
@@ -125,7 +125,9 @@ cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
     if (result.status != legacy::ReadStatus::Absent && GivesReticleToggle(input.ansi_path)) {
         dropped.push_back({cfg::DropRule::Reticle, "Hotkeys", "ReticleToggle", CodeText(read.reticleToggleKey)});
     }
-    out.yaw_mode_key = WithChord(read.yawModeKey, 'J');
+    // The published build fixed yaw's chord at Ctrl+Shift+J in code, which no file
+    // could set; it takes the fleet's Ctrl+Shift+H, freed with the reticle toggle.
+    out.yaw_mode_key = WithChord(read.yawModeKey, 'H');
     out.hotkey_debounce_ms = read.debounceMs;
     out.input_block_mode = ToInputBlockMode(read.inputBlockMode);
     out.track_in_third_person = read.trackInThirdPerson;

@@ -141,8 +141,9 @@ starts. End turns head tracking on or off for the current session only; whether
 it is on when the game starts is `EnableOnStartup`.
 
 A `HeadTracking.ini` from an earlier version keeps the yaw mode key it had: the
-key its `YawModeKey` named, or `Delete` where it named none, with `Ctrl+Shift+J`
-beside it. The defaults above are what a new file holds.
+key its `YawModeKey` named, or `Delete` where it named none, with `Ctrl+Shift+H`
+beside it. `Ctrl+Shift+J` no longer toggles yaw mode. The defaults above are what
+a new file holds.
 
 The gold hip-fire reticle marks your mouse/controller aim as you move your head.
 The game's own sights take over while you aim, so the reticle is hidden then.
