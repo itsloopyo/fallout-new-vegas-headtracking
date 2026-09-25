@@ -29,3 +29,26 @@ oracle copy	tests/config_differential/oracle/core-c480d8a/include/cameraunlock/c
 oracle copy	tests/config_differential/oracle/core-c480d8a/include/cameraunlock/math/angle_utils.h	d7a905270933e3cb0c4c361d29d3fd701655498cbcd1875ea79d180468bdbe6a
 oracle copy	tests/config_differential/oracle/core-c480d8a/include/cameraunlock/math/smoothing_utils.h	fc2146f8c585e5f610c7234e302f59de4945679cfa28ff479ca47477ec073f22
 oracle copy	tests/config_differential/oracle/core-c480d8a/src/config/ini_reader.cpp	e01515c2656aaf533bae4350dc45b702c3e3d4043935743dcc9bd5ea581fbe1c
+# Inputs under data/, each checked against its source by hash. A seed is the launcher-manifest.json
+# seed at that commit, decoded from content_b64. dev is the rolling pre-release, whose target is
+# a4de67a (gh release view dev); the dev tag points at 74431db, which is not that build.
+# A first-run file is what Config::CreateDefaultConfig at that commit writes: the function and its
+# DEFAULT_ constants cut from src/config.cpp and compiled alone (MSVC, Win32, Release, core headers
+# from oracle/core-c480d8a). The test also checks that fnv_config_oracle writes the v0.3.1 file
+# for no file.
+input v0.1.0/shipped.ini	v0.1.0 (9e23f28):config/HeadTracking.ini	ba730f1ce5134b67bc8dea2cda65e54e9f2dabbbaa532433440523126bb00c51
+input v0.1.0/seed.ini	v0.1.0 (9e23f28) launcher-manifest.json seed	ba730f1ce5134b67bc8dea2cda65e54e9f2dabbbaa532433440523126bb00c51
+input v0.1.0/first-run.ini	v0.1.0 (9e23f28) CreateDefaultConfig output	6316bd09306d0f360d53486428fdc3dbd1a8ba05145f1eb9a4a593e772fd90be
+input v0.2.0/shipped.ini	v0.2.0 (cafcd17):config/HeadTracking.ini	c972f08464e095a004b177ff831e5060a83ae4d4299c9a6559d3ad50babc8d72
+input v0.2.0/seed.ini	v0.2.0 (cafcd17) launcher-manifest.json seed	c972f08464e095a004b177ff831e5060a83ae4d4299c9a6559d3ad50babc8d72
+input v0.2.0/first-run.ini	v0.2.0 (cafcd17) CreateDefaultConfig output	1f740854d8d344b9e1455b5c469c9dbd065c4f9775e7e20fb22c3b64a716494d
+input v0.3.1/shipped.ini	v0.3.1 (86d99c1):config/HeadTracking.ini	2c6860a445e4f418f31a594f156d81a2f1363400f014d14fbdc6af236036e469
+input v0.3.1/seed.ini	v0.3.1 (86d99c1) launcher-manifest.json seed	2c6860a445e4f418f31a594f156d81a2f1363400f014d14fbdc6af236036e469
+input v0.3.1/first-run.ini	v0.3.1 (86d99c1) CreateDefaultConfig output	0287bbdb0c3d28970377cfb0334e92fdb43e58da84f334f3b34991fff300b7fd
+input dev/shipped.ini	dev pre-release (a4de67a):config/HeadTracking.ini	2c6860a445e4f418f31a594f156d81a2f1363400f014d14fbdc6af236036e469
+input dev/seed.ini	dev pre-release (a4de67a) launcher-manifest.json seed	2c6860a445e4f418f31a594f156d81a2f1363400f014d14fbdc6af236036e469
+input dev/first-run.ini	dev pre-release (a4de67a) CreateDefaultConfig output	0287bbdb0c3d28970377cfb0334e92fdb43e58da84f334f3b34991fff300b7fd
+input committed/4df0584.ini	4df0584:config/HeadTracking.ini	d2614344d23f033d3d9439f4cd50970337722658acfd00325a8a2cd30f30e7f0
+input committed/74431db.ini	74431db:config/HeadTracking.ini	6ebae03104b38ebd5feea34266b9ed2b8e1e3598dc6050053d6a7c18045df252
+input predecessor/v1.0.1.ini	fallout-new-vegas-headtracking-delete v1.0.1 (35f1ee0):config/HeadTracking.ini	764cacfdbe245ef10b5e4afd8165df1625d092f66961bbe30bdddb72fbf12796
+input predecessor/v1.0.3.ini	fallout-new-vegas-headtracking-delete v1.0.3 (73f7301):config/HeadTracking.ini	764cacfdbe245ef10b5e4afd8165df1625d092f66961bbe30bdddb72fbf12796

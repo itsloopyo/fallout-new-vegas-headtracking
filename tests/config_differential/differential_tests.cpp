@@ -526,6 +526,12 @@ int main(int argc, char** argv) {
     const std::vector<Record> published = RunOracle(oracle, root / "oracle-inputs.txt", root / "oracle-records.txt");
     Check(published.size() == inputs.size(), "the oracle read " + std::to_string(published.size()) + " of " +
                                                  std::to_string(inputs.size()) + " inputs");
+    for (std::size_t i = 0; i < inputs.size(); ++i) {
+        if (inputs[i].bytes) continue;
+        Check(ReadBytes(root / std::to_string(i) / "oracle" / "HeadTracking.ini") ==
+                  ReadBytes(kData / "v0.3.1" / "first-run.ini"),
+              "the oracle's first-run output is data/v0.3.1/first-run.ini");
+    }
 
     std::map<std::string, std::vector<std::string>> changesSeen;
     for (std::size_t i = 0; i < inputs.size() && i < published.size(); ++i) {
