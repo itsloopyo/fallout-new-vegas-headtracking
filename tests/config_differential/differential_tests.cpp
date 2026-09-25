@@ -349,6 +349,13 @@ bool Dropped(const cfg::ImportResult& import, cfg::DropRule rule, const char* se
     return false;
 }
 
+// Whether the file gives the key a value, read through the API the published
+// build read it with.
+bool GivesValue(const fs::path& file, const char* section, const char* key) {
+    char value[16] = {};
+    return GetPrivateProfileStringA(section, key, "", value, sizeof(value), file.string().c_str()) > 0;
+}
+
 bool IsNaN(const std::string& bits) {
     const unsigned long long value = std::stoull(bits, nullptr, 16);
     double number = 0;
@@ -359,8 +366,9 @@ bool IsNaN(const std::string& bits) {
 // Comparison 2 for one input: empty when every difference between the import
 // and the migration is one core's data/config-format.json approves, and the
 // import recorded it; otherwise what is left.
-std::vector<std::string> UnexplainedMigrationDifferences(const std::string& input, const Record& import,
-                                                         const cfg::ImportResult& result, const Record& migration) {
+std::vector<std::string> UnexplainedMigrationDifferences(const std::string& input, bool givesReticleToggle,
+                                                         const Record& import, const cfg::ImportResult& result,
+                                                         const Record& migration) {
     std::vector<std::string> left;
     if (import.at("status") != migration.at("status")) {
         left.push_back("status " + import.at("status") + " -> " + migration.at("status"));
@@ -386,9 +394,10 @@ std::vector<std::string> UnexplainedMigrationDifferences(const std::string& inpu
         // [Feedback] ShowMessages is dead: it gated messages to a game console
         // this build never had (g_ConsolePrint is always null).
         if (name == "field.showMessages") continue;
-        // Approved change `reticle`: the reticle toggle key and its chord.
+        // Approved change `reticle`: the reticle toggle key and its chord, logged
+        // as dropped only where the file gave ReticleToggle a value.
         if (name == "hotkey.ReticleToggle" && m == migration.end() &&
-            Dropped(result, cfg::DropRule::Reticle, "Hotkeys", "ReticleToggle")) {
+            Dropped(result, cfg::DropRule::Reticle, "Hotkeys", "ReticleToggle") == givesReticleToggle) {
             continue;
         }
         // Normalisation N2: a NaN smoothing, which the range check let through.
@@ -565,7 +574,9 @@ int main(int argc, char** argv) {
         if (input.bytes) WriteBytes(dir / "migrate" / "HeadTracking.ini", *input.bytes);
         const Record migration = Migrate(input, dir / "migrate", result);
         if (migration.at("status") == "usable") ++migrated;
-        const auto left = UnexplainedMigrationDifferences(input.name, import, result, migration);
+        const bool givesReticleToggle =
+            input.bytes && GivesValue(dir / "import" / "HeadTracking.ini", "Hotkeys", "ReticleToggle");
+        const auto left = UnexplainedMigrationDifferences(input.name, givesReticleToggle, import, result, migration);
         for (const std::string& difference : left) {
             Fail("comparison 2, " + input.name + ": " + difference);
         }

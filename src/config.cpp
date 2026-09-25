@@ -2,6 +2,8 @@
 
 #include "legacy_config/legacy_config.h"
 
+#include <cameraunlock/config/ini_reader.h>
+
 #include <cstdio>
 #include <stdexcept>
 #include <utility>
@@ -103,7 +105,12 @@ cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
                                                       "RemoteSmoothing", dropped);
     out.toggle_key = WithChord(read.toggleKey, 'Y');
     out.cycle_tracking_mode_key = WithChord(read.cycleTrackingModeKey, 'G');
-    dropped.push_back({cfg::DropRule::Reticle, "Hotkeys", "ReticleToggle", CodeText(read.reticleToggleKey)});
+    // Only a file that names the key had a reticle toggle to lose; without it the
+    // frozen struct holds the build's default, which no player chose.
+    cameraunlock::IniReader file;
+    if (file.Open(input.ansi_path) && !file.ReadString("Hotkeys", "ReticleToggle", "").empty()) {
+        dropped.push_back({cfg::DropRule::Reticle, "Hotkeys", "ReticleToggle", CodeText(read.reticleToggleKey)});
+    }
     out.yaw_mode_key = WithChord(read.yawModeKey, 'J');
     out.hotkey_debounce_ms = read.debounceMs;
     out.input_block_mode = ToInputBlockMode(read.inputBlockMode);
