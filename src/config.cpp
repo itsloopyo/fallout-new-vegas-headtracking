@@ -2,9 +2,11 @@
 
 #include "legacy_config/legacy_config.h"
 
-#include <cameraunlock/config/ini_reader.h>
+#include <cameraunlock/config/canonical_ini.h>
 
 #include <cstdio>
+#include <fstream>
+#include <iterator>
 #include <stdexcept>
 #include <utility>
 
@@ -84,6 +86,21 @@ std::string CodeText(int code) {
     return text;
 }
 
+// Only a file that gives the key a value had a reticle toggle to lose: without one
+// the frozen struct holds the build's default, which no file named. Opened by its
+// ANSI path, the file the frozen reader read.
+bool GivesReticleToggle(const std::string& ansiPath) {
+    std::ifstream in(ansiPath, std::ios::binary);
+    if (!in) throw std::runtime_error("cannot reopen the legacy file the frozen reader just read");
+    const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    const cfg::CanonicalIni doc = cfg::ParseCanonicalIni(bytes);
+    // The Windows profile API the frozen reader uses reads a UTF-16 file and one
+    // holding a NUL, which the canonical parser does not, so those count as giving it.
+    if (!doc.IsReadable()) return true;
+    const cfg::CanonicalValue* value = doc.Find("Hotkeys", "ReticleToggle");
+    return value && !value->value.empty();
+}
+
 cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
     legacy::Config read;
     const legacy::ReadResult result = legacy::Read(input.ansi_path, read);
@@ -105,10 +122,7 @@ cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
                                                       "RemoteSmoothing", dropped);
     out.toggle_key = WithChord(read.toggleKey, 'Y');
     out.cycle_tracking_mode_key = WithChord(read.cycleTrackingModeKey, 'G');
-    // Only a file that names the key had a reticle toggle to lose; without it the
-    // frozen struct holds the build's default, which no player chose.
-    cameraunlock::IniReader file;
-    if (file.Open(input.ansi_path) && !file.ReadString("Hotkeys", "ReticleToggle", "").empty()) {
+    if (result.status != legacy::ReadStatus::Absent && GivesReticleToggle(input.ansi_path)) {
         dropped.push_back({cfg::DropRule::Reticle, "Hotkeys", "ReticleToggle", CodeText(read.reticleToggleKey)});
     }
     out.yaw_mode_key = WithChord(read.yawModeKey, 'J');

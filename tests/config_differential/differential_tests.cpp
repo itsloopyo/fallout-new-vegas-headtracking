@@ -356,6 +356,23 @@ bool GivesValue(const fs::path& file, const char* section, const char* key) {
     return GetPrivateProfileStringA(section, key, "", value, sizeof(value), file.string().c_str()) > 0;
 }
 
+// The inputs where the map, which reads the file with core's canonical parser
+// (GetPrivateProfileString is barred outside the frozen reader), and
+// GetPrivateProfileString part on whether ReticleToggle has a value: the parser
+// keeps "" as a value where GetPrivateProfileString strips the quotes, and opens
+// no section for a header with no ']' where GetPrivateProfileString does.
+const char* const kReticleReadingDiffers[] = {
+    "corpus: [Hotkeys] ReticleToggle: value \"\"",
+    "corpus: [Hotkeys]: header not closed",
+};
+
+bool ReticleReadingDiffers(const std::string& input) {
+    for (const char* name : kReticleReadingDiffers) {
+        if (input == name) return true;
+    }
+    return false;
+}
+
 bool IsNaN(const std::string& bits) {
     const unsigned long long value = std::stoull(bits, nullptr, 16);
     double number = 0;
@@ -397,7 +414,8 @@ std::vector<std::string> UnexplainedMigrationDifferences(const std::string& inpu
         // Approved change `reticle`: the reticle toggle key and its chord, logged
         // as dropped only where the file gave ReticleToggle a value.
         if (name == "hotkey.ReticleToggle" && m == migration.end() &&
-            Dropped(result, cfg::DropRule::Reticle, "Hotkeys", "ReticleToggle") == givesReticleToggle) {
+            Dropped(result, cfg::DropRule::Reticle, "Hotkeys", "ReticleToggle") ==
+                (givesReticleToggle != ReticleReadingDiffers(input))) {
             continue;
         }
         // Normalisation N2: a NaN smoothing, which the range check let through.
@@ -511,6 +529,11 @@ int main(int argc, char** argv) {
     const fs::path oracle = argv[1];
     const fs::path root = MakeTempRoot();
     const std::vector<Input> inputs = Inputs();
+    for (const char* name : kReticleReadingDiffers) {
+        bool found = false;
+        for (const Input& input : inputs) found = found || input.name == name;
+        Check(found, std::string("no input is named '") + name + "'");
+    }
 
     std::string list;
     for (std::size_t i = 0; i < inputs.size(); ++i) {
