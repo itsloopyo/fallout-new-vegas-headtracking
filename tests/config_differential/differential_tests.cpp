@@ -409,9 +409,10 @@ std::vector<std::string> UnexplainedMigrationDifferences(const std::string& inpu
             Dropped(result, cfg::DropRule::NonFiniteNumber, "Smoothing", "RemoteSmoothing")) {
             continue;
         }
-        // The moved default: with no file, the yaw mode takes the fleet's
-        // PageDown / Ctrl+Shift+H in place of the Delete / Ctrl+Shift+J the
-        // published build's first-run file wrote.
+        // Not a section 6 rule or a moved default: the committed file takes the
+        // fleet's PageDown / Ctrl+Shift+H where v0.3.1 shipped Delete with a
+        // fixed Ctrl+Shift+J. Held open for an owner ruling under core's
+        // conversion_notes.fallout-new-vegas-headtracking.
         if (name == "hotkey.YawMode" && input == "no file" && m->second == ListBindings(defaults.yaw_mode_key)) {
             continue;
         }
@@ -590,7 +591,8 @@ int main(int argc, char** argv) {
     std::printf("Comparison 2 (the frozen reader against the migration): %zu inputs migrated\n", migrated);
 
     // A player who installed the newest published build and changed nothing
-    // gets the committed file, apart from the yaw mode key the build shipped.
+    // gets the committed file, apart from the yaw mode key the build shipped,
+    // which awaits the same owner ruling as comparison 2's no-file exception.
     const std::string committed = ReadBytes(fs::path(FNV_SOURCE_DIR) / "config" / "HeadTracking.ini");
     Check(committed == RenderedDefaults(), "config/HeadTracking.ini is what the table renders");
     const std::string expectedUpgrade =
