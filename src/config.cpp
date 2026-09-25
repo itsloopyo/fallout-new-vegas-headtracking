@@ -6,6 +6,7 @@
 #include "hotkey_handler.h"
 #include "game_state.h"
 #include "udp_receiver.h"
+#include "legacy_config/legacy_config.h"
 
 #include <cameraunlock/logging/file_log.h>
 #include <cameraunlock/math/smoothing_utils.h>
@@ -13,6 +14,8 @@
 #include <cstdarg>
 #include <cstdio>
 #include <fstream>
+#include <stdexcept>
+#include <string>
 
 namespace HeadTracking {
 
@@ -38,33 +41,29 @@ static void ConfigDiag(const char* level, const char* fmt, ...) {
 constexpr uint16_t DEFAULT_UDP_PORT = 4242;
 constexpr double DEFAULT_LOCAL_SMOOTHING = cameraunlock::math::kDefaultLocalSmoothing;
 constexpr double DEFAULT_REMOTE_SMOOTHING = cameraunlock::math::kDefaultRemoteSmoothing;
-constexpr int DEFAULT_TOGGLE_KEY = 0x23;                // End
-constexpr int DEFAULT_CYCLE_TRACKING_MODE_KEY = 0x21;   // Page Up
-constexpr int DEFAULT_RETICLE_TOGGLE_KEY = 0x22;        // Page Down
-constexpr int DEFAULT_YAW_MODE_KEY = 0x2E;              // Delete
 constexpr uint64_t DEFAULT_DEBOUNCE_MS = 200;
 constexpr int DEFAULT_INPUT_BLOCK_MODE = 0;  // Never
 
 Config::Config()
     : m_iniPath()
-    , m_loaded(false)
-    , m_udpPort(DEFAULT_UDP_PORT)
-    , m_localSmoothing(DEFAULT_LOCAL_SMOOTHING)
-    , m_remoteSmoothing(DEFAULT_REMOTE_SMOOTHING)
-    , m_toggleKey(DEFAULT_TOGGLE_KEY)
-    , m_cycleTrackingModeKey(DEFAULT_CYCLE_TRACKING_MODE_KEY)
-    , m_reticleToggleKey(DEFAULT_RETICLE_TOGGLE_KEY)
-    , m_yawModeKey(DEFAULT_YAW_MODE_KEY)
-    , m_debounceMs(DEFAULT_DEBOUNCE_MS)
-    , m_inputBlockMode(InputBlockMode::Never)
-    , m_trackInThirdPerson(true)
-    , m_trackInVATS(false)
-    , m_pauseDuringCombat(false)
-    , m_showMessages(true)
-    , m_worldSpaceYaw(true) {
+    , m_loaded(false) {
 }
 
 Config::~Config() {
+}
+
+static InputBlockMode ToInputBlockMode(legacy::InputBlockMode mode) {
+    switch (mode) {
+        case legacy::InputBlockMode::Never:
+            return InputBlockMode::Never;
+        case legacy::InputBlockMode::MenusOnly:
+            return InputBlockMode::MenusOnly;
+        case legacy::InputBlockMode::AllDialogue:
+            return InputBlockMode::AllDialogue;
+        case legacy::InputBlockMode::AllOverlays:
+            return InputBlockMode::AllOverlays;
+    }
+    throw std::logic_error("legacy InputBlockMode " + std::to_string(static_cast<int>(mode)) + " has no runtime mode");
 }
 
 // Warned once per process rather than once per load: config is reloadable, and
@@ -130,83 +129,15 @@ bool Config::Load(const std::string& iniPath) {
         ConfigDiag("WARNING", "Sensitivity, Deadzone and Camera.Mode are retired and ignored. Configure pose shaping in the tracker; tracking now always leaves player aim unchanged.");
     }
 
-    // Network section
-    m_udpPort = static_cast<uint16_t>(m_ini.ReadInt("Network", "Port", DEFAULT_UDP_PORT));
-
-    // Smoothing section
-    m_localSmoothing = m_ini.ReadDouble("Smoothing", "LocalSmoothing", DEFAULT_LOCAL_SMOOTHING);
-    m_remoteSmoothing = m_ini.ReadDouble("Smoothing", "RemoteSmoothing", DEFAULT_REMOTE_SMOOTHING);
-
     WarnRetiredSmoothingKey(m_ini, "Smoothing", "Amount");
 
-    // Hotkeys section
-    m_toggleKey = m_ini.ReadHex("Hotkeys", "Toggle", DEFAULT_TOGGLE_KEY);
-    m_cycleTrackingModeKey = m_ini.ReadHex("Hotkeys", "CycleTrackingMode", DEFAULT_CYCLE_TRACKING_MODE_KEY);
-    m_reticleToggleKey = m_ini.ReadHex("Hotkeys", "ReticleToggle", DEFAULT_RETICLE_TOGGLE_KEY);
-    m_yawModeKey = m_ini.ReadHex("Hotkeys", "YawModeKey", DEFAULT_YAW_MODE_KEY);
-    m_debounceMs = static_cast<uint64_t>(m_ini.ReadInt("Hotkeys", "DebounceMs", static_cast<int>(DEFAULT_DEBOUNCE_MS)));
-
-    // GameState section
-    int inputBlockMode = m_ini.ReadInt("GameState", "InputBlockMode", DEFAULT_INPUT_BLOCK_MODE);
-    switch (inputBlockMode) {
-        case 0:
-            m_inputBlockMode = InputBlockMode::Never;
-            break;
-        case 1:
-            m_inputBlockMode = InputBlockMode::MenusOnly;
-            break;
-        case 2:
-            m_inputBlockMode = InputBlockMode::AllDialogue;
-            break;
-        case 3:
-            m_inputBlockMode = InputBlockMode::AllOverlays;
-            break;
-        default:
-            ConfigDiag("ERROR", "Invalid InputBlockMode %d (valid: 0-3)", inputBlockMode);
-            return false;
-    }
-
-    m_trackInThirdPerson = m_ini.ReadBool("GameState", "TrackInThirdPerson", true);
-    m_trackInVATS = m_ini.ReadBool("GameState", "TrackInVATS", false);
-    m_pauseDuringCombat = m_ini.ReadBool("GameState", "PauseDuringCombat", false);
-
-    // Feedback section
-    m_showMessages = m_ini.ReadBool("Feedback", "ShowMessages", true);
-
-    // WorldSpaceYaw: true = horizon-locked yaw (default), false = camera-local
-    m_worldSpaceYaw = m_ini.ReadBool("Camera", "WorldSpaceYaw", true);
-
-    // Validate values - FAIL FAST on invalid config
-    auto inDoubleRange = [](double v, double lo, double hi, const char* name) -> bool {
-        if (v < lo || v > hi) {
-            ConfigDiag("ERROR", "%s %.2f out of range (valid: %.2f to %.2f)", name, v, lo, hi);
-            return false;
-        }
-        return true;
-    };
-    auto keyInRange = [](int code, const char* name) -> bool {
-        if (code < 0x01 || code > 0xFE) {
-            ConfigDiag("ERROR", "Invalid %s key 0x%02X (valid: 0x01-0xFE)", name, code);
-            return false;
-        }
-        return true;
-    };
-
-    if (m_udpPort == 0) {
-        ConfigDiag("ERROR", "Invalid UDP port 0 (must be non-zero)");
+    const legacy::ReadResult read = legacy::Read(m_iniPath, m_values);
+    if (read.status == legacy::ReadStatus::Absent) {
+        ConfigDiag("ERROR", "Failed to open config file %s", m_iniPath.c_str());
         return false;
     }
-
-    if (!inDoubleRange(m_localSmoothing,   0.0, 1.0,  "LocalSmoothing"))    return false;
-    if (!inDoubleRange(m_remoteSmoothing,  0.0, 1.0,  "RemoteSmoothing"))   return false;
-
-    if (!keyInRange(m_toggleKey,            "toggle"))              return false;
-    if (!keyInRange(m_cycleTrackingModeKey, "cycle tracking mode")) return false;
-    if (!keyInRange(m_reticleToggleKey,     "reticle toggle"))      return false;
-    if (!keyInRange(m_yawModeKey,           "yaw mode"))            return false;
-
-    if (m_debounceMs < 50 || m_debounceMs > 2000) {
-        ConfigDiag("ERROR", "DebounceMs %llu out of range (valid: 50-2000)", m_debounceMs);
+    if (read.status == legacy::ReadStatus::Refused) {
+        ConfigDiag("ERROR", "%s", read.error.c_str());
         return false;
     }
 
@@ -214,9 +145,9 @@ bool Config::Load(const std::string& iniPath) {
 
     if (g_ConsolePrint) {
         g_ConsolePrint("HeadTracking: Config loaded successfully");
-        g_ConsolePrint("HeadTracking:   UDP Port: %u", m_udpPort);
+        g_ConsolePrint("HeadTracking:   UDP Port: %u", m_values.udpPort);
         g_ConsolePrint("HeadTracking:   Smoothing: %.2f local / %.2f remote",
-                       m_localSmoothing, m_remoteSmoothing);
+                       m_values.localSmoothing, m_values.remoteSmoothing);
 
     }
 
@@ -254,35 +185,35 @@ bool Config::ApplyToComponents(CameraController* camera, HotkeyHandler* hotkey,
 
     // Apply to camera controller
     if (camera) {
-        camera->SetLocalSmoothing(m_localSmoothing);
-        camera->SetRemoteSmoothing(m_remoteSmoothing);
-        camera->SetWorldSpaceYaw(m_worldSpaceYaw);
+        camera->SetLocalSmoothing(m_values.localSmoothing);
+        camera->SetRemoteSmoothing(m_values.remoteSmoothing);
+        camera->SetWorldSpaceYaw(m_values.worldSpaceYaw);
     }
 
     // Apply to hotkey handler - FAIL FAST if key codes are invalid
     if (hotkey) {
-        if (!hotkey->SetToggleKey(m_toggleKey)) {
+        if (!hotkey->SetToggleKey(m_values.toggleKey)) {
             return false;
         }
-        if (!hotkey->SetCycleTrackingModeKey(m_cycleTrackingModeKey)) {
+        if (!hotkey->SetCycleTrackingModeKey(m_values.cycleTrackingModeKey)) {
             return false;
         }
-        if (!hotkey->SetReticleToggleKey(m_reticleToggleKey)) {
+        if (!hotkey->SetReticleToggleKey(m_values.reticleToggleKey)) {
             return false;
         }
-        if (!hotkey->SetYawModeKey(m_yawModeKey)) {
+        if (!hotkey->SetYawModeKey(m_values.yawModeKey)) {
             return false;
         }
-        hotkey->SetDebounceTime(m_debounceMs);
-        hotkey->SetShowMessages(m_showMessages);
+        hotkey->SetDebounceTime(m_values.debounceMs);
+        hotkey->SetShowMessages(m_values.showMessages);
     }
 
     // Apply to game state
     if (gameState) {
-        gameState->SetInputBlockMode(m_inputBlockMode);
-        gameState->SetTrackInThirdPerson(m_trackInThirdPerson);
-        gameState->SetTrackInVATS(m_trackInVATS);
-        gameState->SetPauseDuringCombat(m_pauseDuringCombat);
+        gameState->SetInputBlockMode(ToInputBlockMode(m_values.inputBlockMode));
+        gameState->SetTrackInThirdPerson(m_values.trackInThirdPerson);
+        gameState->SetTrackInVATS(m_values.trackInVATS);
+        gameState->SetPauseDuringCombat(m_values.pauseDuringCombat);
     }
 
     // Note: UDP port can't be changed at runtime without reinitializing the socket

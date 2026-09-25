@@ -4,6 +4,7 @@
 
 #include "camera_controller.h"
 #include "game_state.h"
+#include "legacy_config/legacy_config.h"
 
 #include <cameraunlock/config/ini_reader.h>
 
@@ -48,13 +49,13 @@ public:
                            GameState* gameState, UdpReceiver* udpReceiver);
 
     // Network settings
-    uint16_t GetUdpPort() const { return m_udpPort; }
+    uint16_t GetUdpPort() const { return m_values.udpPort; }
 
     // Smoothing, chosen per connection: local for a tracker on this machine,
     // remote for a device sending over the network. Both cover rotation and
     // position.
-    double GetLocalSmoothing() const { return m_localSmoothing; }
-    double GetRemoteSmoothing() const { return m_remoteSmoothing; }
+    double GetLocalSmoothing() const { return m_values.localSmoothing; }
+    double GetRemoteSmoothing() const { return m_values.remoteSmoothing; }
 
     // Check if configuration has been loaded
     bool IsLoaded() const { return m_loaded; }
@@ -72,31 +73,9 @@ private:
     // INI reader (handles parsing and change detection)
     cameraunlock::IniReader m_ini;
 
-    // Network settings
-    uint16_t m_udpPort;
-
-    // Smoothing factors (local / remote connection)
-    double m_localSmoothing;
-    double m_remoteSmoothing;
-
-    // Hotkey settings
-    int m_toggleKey;
-    int m_cycleTrackingModeKey;
-    int m_reticleToggleKey;
-    int m_yawModeKey;
-    uint64_t m_debounceMs;
-
-    // Game state settings
-    InputBlockMode m_inputBlockMode;
-    bool m_trackInThirdPerson;
-    bool m_trackInVATS;
-    bool m_pauseDuringCombat;
-
-    // Feedback settings
-    bool m_showMessages;
-
-    // Yaw mode: true = world-space (horizon-locked, default), false = camera-local
-    bool m_worldSpaceYaw;
+    // The settings the frozen reader filled, kept across reloads as the
+    // members it replaces were.
+    legacy::Config m_values;
 };
 
 }  // namespace HeadTracking

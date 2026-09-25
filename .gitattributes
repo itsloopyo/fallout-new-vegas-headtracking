@@ -97,3 +97,7 @@ docker-compose*.yml text eol=lf
 *.jar binary
 *.war binary
 *.ear binary
+
+# Differential test inputs are the exact bytes published builds shipped or wrote
+# (first-run files are CRLF); normalising them would test other files.
+tests/config_differential/data/** -text

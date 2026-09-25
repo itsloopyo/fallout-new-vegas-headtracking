@@ -34,6 +34,24 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/cameraunlock-core/cpp cameraunlock-core)
 
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
+# The canonical config conversion's differential test. The oracle is v0.3.1's
+# reader built against core as v0.3.1 pinned it, so it is its own executable and
+# never links the current core.
+add_executable(fnv_config_oracle
+    tests/config_differential/oracle/oracle_main.cpp
+    tests/config_differential/oracle/published_config.cpp
+    tests/config_differential/oracle/core-c480d8a/src/config/ini_reader.cpp
+)
+target_include_directories(fnv_config_oracle PRIVATE tests/config_differential/oracle/core-c480d8a/include)
+add_executable(fnv_config_differential
+    tests/config_differential/differential_tests.cpp
+    src/legacy_config/legacy_config.cpp
+)
+target_include_directories(fnv_config_differential PRIVATE tests/config_differential)
+target_compile_definitions(fnv_config_differential PRIVATE FNV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+target_link_libraries(fnv_config_differential cameraunlock)
+add_test(NAME fnv_config_differential COMMAND fnv_config_differential $<TARGET_FILE:fnv_config_oracle>)
+
 # Source files
 set(SOURCES
     src/main.cpp
@@ -43,6 +61,7 @@ set(SOURCES
     src/gamepass_offsets.cpp
     src/plugin.cpp
     src/config.cpp
+    src/legacy_config/legacy_config.cpp
     src/udp_receiver.cpp
     src/camera_controller.cpp
     src/game_state.cpp
@@ -63,6 +82,7 @@ set(HEADERS
     src/build_profile.h
     src/version.h
     src/config.h
+    src/legacy_config/legacy_config.h
     src/tracking_data.h
     src/game_offsets.h
     src/udp_receiver.h

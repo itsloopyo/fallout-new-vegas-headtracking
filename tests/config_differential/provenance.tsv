@@ -1,0 +1,31 @@
+# What the differential test compares, and where each file came from.
+# Columns: role, source (commit:path, or the path in this repo), sha256 of the bytes.
+# v0.3.1 (86d99c1) is the newest published release and the dev pre-release is a4de67a; their
+# src/config.cpp is the same file, and their core pins (c480d8a, f92be69) hold the same bytes for
+# every core source that reader compiles. Comparison 1 is not empty by construction: the frozen
+# reader is ecb14e4's src/config.cpp, which differs from v0.3.1's (e3f6d3f).
+published reader	v0.3.1:src/config.cpp	fbfaec39daee632b23d78b36628575cb427505c7feb2f085ab591945de46eef0
+published reader	a4de67a:src/config.cpp	fbfaec39daee632b23d78b36628575cb427505c7feb2f085ab591945de46eef0
+published core source	cameraunlock-core c480d8a:cpp/include/cameraunlock/config/ini_reader.h	a7ffb44210ff59672fa97e8e5feaa2cb3e81938fcc0334a384c68bc371b3857a
+published core source	cameraunlock-core f92be69:cpp/include/cameraunlock/config/ini_reader.h	a7ffb44210ff59672fa97e8e5feaa2cb3e81938fcc0334a384c68bc371b3857a
+published core source	cameraunlock-core c480d8a:cpp/src/config/ini_reader.cpp	e01515c2656aaf533bae4350dc45b702c3e3d4043935743dcc9bd5ea581fbe1c
+published core source	cameraunlock-core f92be69:cpp/src/config/ini_reader.cpp	e01515c2656aaf533bae4350dc45b702c3e3d4043935743dcc9bd5ea581fbe1c
+published core source	cameraunlock-core c480d8a:cpp/include/cameraunlock/config/config_key_schema.g.h	e5f4f312fa6984c49514584ccbbe610209eedd290612d3485f0c64bfd775bd05
+published core source	cameraunlock-core f92be69:cpp/include/cameraunlock/config/config_key_schema.g.h	e5f4f312fa6984c49514584ccbbe610209eedd290612d3485f0c64bfd775bd05
+published core source	cameraunlock-core c480d8a:cpp/include/cameraunlock/ads/ads_mode.h	94cd36b585e878e673566f602e9496417cb797970162fcc9c2af1e50e24358de
+published core source	cameraunlock-core f92be69:cpp/include/cameraunlock/ads/ads_mode.h	94cd36b585e878e673566f602e9496417cb797970162fcc9c2af1e50e24358de
+published core source	cameraunlock-core c480d8a:cpp/include/cameraunlock/math/smoothing_utils.h	fc2146f8c585e5f610c7234e302f59de4945679cfa28ff479ca47477ec073f22
+published core source	cameraunlock-core f92be69:cpp/include/cameraunlock/math/smoothing_utils.h	fc2146f8c585e5f610c7234e302f59de4945679cfa28ff479ca47477ec073f22
+published core source	cameraunlock-core c480d8a:cpp/include/cameraunlock/math/angle_utils.h	d7a905270933e3cb0c4c361d29d3fd701655498cbcd1875ea79d180468bdbe6a
+published core source	cameraunlock-core f92be69:cpp/include/cameraunlock/math/angle_utils.h	d7a905270933e3cb0c4c361d29d3fd701655498cbcd1875ea79d180468bdbe6a
+frozen from	ecb14e4:src/config.cpp	267908eaeb7e4736d4837b409b2538683634bde5d2310127309a2691836dab41
+frozen reader	src/legacy_config/legacy_config.h	716d174e806a98c9ce8cd86a521e85641b9e3ffbe2541e6ab7cf558b6fbc78b0
+frozen reader	src/legacy_config/legacy_config.cpp	a6d34c25469cdd8ea572eedcd37cb4ecbf70ddc6790465c897d0ebba9c5e7982
+import core source	cameraunlock-core befb88e:cpp/include/cameraunlock/config/ini_reader.h	a7ffb44210ff59672fa97e8e5feaa2cb3e81938fcc0334a384c68bc371b3857a
+import core source	cameraunlock-core befb88e:cpp/src/config/ini_reader.cpp	e01515c2656aaf533bae4350dc45b702c3e3d4043935743dcc9bd5ea581fbe1c
+oracle copy	tests/config_differential/oracle/core-c480d8a/include/cameraunlock/ads/ads_mode.h	94cd36b585e878e673566f602e9496417cb797970162fcc9c2af1e50e24358de
+oracle copy	tests/config_differential/oracle/core-c480d8a/include/cameraunlock/config/config_key_schema.g.h	e5f4f312fa6984c49514584ccbbe610209eedd290612d3485f0c64bfd775bd05
+oracle copy	tests/config_differential/oracle/core-c480d8a/include/cameraunlock/config/ini_reader.h	a7ffb44210ff59672fa97e8e5feaa2cb3e81938fcc0334a384c68bc371b3857a
+oracle copy	tests/config_differential/oracle/core-c480d8a/include/cameraunlock/math/angle_utils.h	d7a905270933e3cb0c4c361d29d3fd701655498cbcd1875ea79d180468bdbe6a
+oracle copy	tests/config_differential/oracle/core-c480d8a/include/cameraunlock/math/smoothing_utils.h	fc2146f8c585e5f610c7234e302f59de4945679cfa28ff479ca47477ec073f22
+oracle copy	tests/config_differential/oracle/core-c480d8a/src/config/ini_reader.cpp	e01515c2656aaf533bae4350dc45b702c3e3d4043935743dcc9bd5ea581fbe1c
