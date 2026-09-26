@@ -99,14 +99,15 @@ const fs::path kData = fs::path(FNV_SOURCE_DIR) / "tests" / "config_differential
 // v0.3.1 and dev the root file), each build's first-run output, the two other
 // committed versions of config/HeadTracking.ini before v0.3.1, and the file the
 // predecessor repo fallout-new-vegas-headtracking-delete shipped at v1.0.1 and
-// v1.0.3.
+// v1.0.3 with the file each wrote on a first run (InputBlockMode=3).
 const char* const kDataFiles[] = {
     "v0.1.0/shipped.ini",   "v0.1.0/seed.ini",   "v0.1.0/first-run.ini",
     "v0.2.0/shipped.ini",   "v0.2.0/seed.ini",   "v0.2.0/first-run.ini",
     "v0.3.1/shipped.ini",   "v0.3.1/seed.ini",   "v0.3.1/first-run.ini",
     "dev/shipped.ini",      "dev/seed.ini",      "dev/first-run.ini",
     "committed/4df0584.ini", "committed/74431db.ini",
-    "predecessor/v1.0.1.ini", "predecessor/v1.0.3.ini",
+    "predecessor/v1.0.1.ini", "predecessor/v1.0.1-first-run.ini",
+    "predecessor/v1.0.3.ini", "predecessor/v1.0.3-first-run.ini",
 };
 
 std::string Replace(std::string text, const std::string& from, const std::string& to) {
@@ -153,6 +154,10 @@ std::vector<Input> Inputs() {
 
     const std::string base = ReadBytes(kData / "v0.3.1" / "shipped.ini");
     inputs.push_back({"v0.3.1 shipped, ads_mode=marker", Replace(base, "ads_mode=paused", "ads_mode=marker")});
+    // The corpus gives InputBlockMode one alternate value; these carry the other
+    // two tokens through the migration.
+    inputs.push_back({"v0.3.1 shipped, InputBlockMode=1", Replace(base, "InputBlockMode=0", "InputBlockMode=1")});
+    inputs.push_back({"v0.3.1 shipped, InputBlockMode=3", Replace(base, "InputBlockMode=0", "InputBlockMode=3")});
     std::string padded = base;
     for (int i = 0; i < 64; ++i) padded += "Padding" + std::to_string(i) + "=" + std::string(64, 'x') + "\n";
     inputs.push_back({"v0.3.1 shipped, [Camera] past 4094 bytes", padded});
@@ -661,6 +666,7 @@ int main(int argc, char** argv) {
     // the imported one is not what default gives.
     std::size_t migrated = 0;
     std::set<std::string> migratedFiles;
+    std::set<std::string> blockModesMigrated;
     for (std::size_t i = 0; i < inputs.size(); ++i) {
         const Input& input = inputs[i];
         const fs::path dir = root / std::to_string(i);
@@ -683,7 +689,10 @@ int main(int argc, char** argv) {
         fs::create_directories(dir / "migrate");
         if (input.bytes) WriteBytes(dir / "migrate" / "HeadTracking.ini", *input.bytes);
         const Record migration = Migrate(input, dir / "migrate", dir / "defaults" / "Defaults.ini", result, migratedFiles);
-        if (migration.at("status") == "usable") ++migrated;
+        if (migration.at("status") == "usable") {
+            ++migrated;
+            blockModesMigrated.insert(migration.at("field.inputBlockMode"));
+        }
         const bool givesReticleToggle =
             input.bytes && GivesValue(dir / "import" / "HeadTracking.ini", "Hotkeys", "ReticleToggle");
         const auto left = UnexplainedMigrationDifferences(input.name, givesReticleToggle, import, result, migration);
@@ -712,6 +721,8 @@ int main(int argc, char** argv) {
         }
     }
     std::printf("Comparison 2 (the frozen reader against the migration): %zu inputs migrated\n", migrated);
+    Check(blockModesMigrated == std::set<std::string>{"0", "1", "2", "3"},
+          "every InputBlockMode a player can hold is migrated by some input");
 
     // A player who installed the newest published build and changed nothing
     // gets the committed file, apart from the Delete yaw key the build shipped
