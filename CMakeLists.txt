@@ -52,6 +52,12 @@ target_include_directories(fnv_config_differential PRIVATE tests/config_differen
 target_compile_definitions(fnv_config_differential PRIVATE FNV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 target_link_libraries(fnv_config_differential cameraunlock)
 add_test(NAME fnv_config_differential COMMAND fnv_config_differential $<TARGET_FILE:fnv_config_oracle>)
+# Core's canonical config lint over the committed file and every file the
+# differential test migrated, which it writes beside itself under migrated\.
+add_test(NAME fnv_config_lint COMMAND node
+    ${CMAKE_SOURCE_DIR}/tests/config_differential/lint-migrated.mjs
+    $<TARGET_FILE_DIR:fnv_config_differential>/migrated)
+set_tests_properties(fnv_config_lint PROPERTIES DEPENDS fnv_config_differential)
 
 # The committed config against the table, and the saves. `fnv_config_tests
 # --render-config <path>` is what pixi run render-config writes the file with.

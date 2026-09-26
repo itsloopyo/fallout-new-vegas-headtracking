@@ -17,6 +17,7 @@
 #include <cameraunlock/math/quat4.h>
 #include <cameraunlock/time/qpc_clock.h>
 
+#include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -91,19 +92,23 @@ bool HeadTrackingPlugin::Initialize() {
         return true;
     }
 
-    // The config first - other components depend on it. Load converts an
-    // older file, so it runs here on the init thread and never in DllMain.
-    const std::wstring configPath = ConfigPath();
-    m_configOwner = std::make_unique<cameraunlock::config::ConfigOwner<Config>>(ConfigOwnerOptions(configPath));
+    // The config first - other components depend on it. Load imports an older
+    // file and creates files, so it runs here on the init thread and never in
+    // DllMain.
+    const std::filesystem::path configFolder = ConfigFolder();
+    m_configOwner = std::make_unique<cameraunlock::config::ConfigOwner<Config>>(
+        ConfigOwnerOptions(configFolder, cameraunlock::config::DefaultsFile::PerUser()));
     const cameraunlock::config::ConfigLoadResult<Config> loaded = m_configOwner->Load();
     for (const std::string& line : loaded.log) culog::Line("%s", line.c_str());
     if (!loaded.reason.empty()) culog::Line("%s", loaded.reason.c_str());
     if (loaded.status == cameraunlock::config::ConfigLoadStatus::LegacyRefused) {
         // What the published build did with a file it refused.
-        culog::Line("ERROR: failed to load config from %ls - head tracking is inactive", configPath.c_str());
+        culog::Line("ERROR: failed to load config from %ls - head tracking is inactive",
+                    (configFolder / kLegacyFileName).c_str());
         return false;
     }
-    culog::Line("Config %s: %ls", cameraunlock::config::ConfigLoadStatusName(loaded.status), configPath.c_str());
+    culog::Line("Config %s: %ls", cameraunlock::config::ConfigLoadStatusName(loaded.status),
+                (configFolder / kConfigFileName).c_str());
     m_config = loaded.config;
 
     // Non-fatal: if the port is held by another head-tracker the receiver keeps
@@ -280,9 +285,10 @@ void HeadTrackingPlugin::OnToggleYawModeKey() {
 
 void HeadTrackingPlugin::Save(const std::function<void(Config&)>& change) {
     const cameraunlock::config::ConfigSaveResult saved = m_configOwner->Save(change);
-    if (saved.status == cameraunlock::config::ConfigSaveStatus::Saved) return;
+    // A save that succeeds can carry a line too, naming a row that stopped
+    // following Defaults.ini.
     for (const std::string& line : saved.log) culog::Line("%s", line.c_str());
-    culog::Line("%s", saved.reason.c_str());
+    if (saved.status != cameraunlock::config::ConfigSaveStatus::Saved) culog::Line("%s", saved.reason.c_str());
 }
 
 void HeadTrackingPlugin::ApplyRequestedActions() {
@@ -440,9 +446,9 @@ void HeadTrackingPlugin::OnGameExit() {
     m_gameLoaded = false;
 }
 
-std::wstring ConfigPath() {
+std::filesystem::path ConfigFolder() {
     if (!g_hModule) {
-        throw std::logic_error("ConfigPath needs the module handle DllMain records");
+        throw std::logic_error("ConfigFolder needs the module handle DllMain records");
     }
     std::vector<wchar_t> buffer(MAX_PATH);
     for (;;) {
@@ -457,15 +463,7 @@ std::wstring ConfigPath() {
         buffer.resize(buffer.size() * 2);
     }
 
-    // The config is named for the mod, not for the file the mod was loaded as.
-    // Deriving it from the DLL's own name was fine while the only deployment
-    // was Data\NVSE\Plugins\HeadTracking.dll; the proxy deployment is called
-    // dsound.dll, and that spelling sent it looking for DSOUND.ini and silently
-    // gave every user defaults.
-    const std::wstring modulePath(buffer.begin(), buffer.end());
-    const size_t slashPos = modulePath.find_last_of(L"\\/");
-    const std::wstring dir = slashPos == std::wstring::npos ? std::wstring() : modulePath.substr(0, slashPos + 1);
-    return dir + L"HeadTracking.ini";
+    return std::filesystem::path(std::wstring(buffer.begin(), buffer.end())).parent_path();
 }
 
 }  // namespace HeadTracking

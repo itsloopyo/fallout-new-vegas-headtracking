@@ -10,17 +10,26 @@
   the head pose at ADS entry as a reference. `[Camera] ads_mode` is no longer read.
 - While you lean, the first-person weapon is drawn from the eye position without
   the lean (e3f6d3f).
-- `HeadTracking.ini` has a new layout. The first time this version starts, it converts the file once into the new layout and keeps the file as it was beside it as `HeadTracking.ini.pre-canonical`. `HeadTracking.ini.pre-canonical.last`, when present, is the file as it was before the most recent conversion: the mod converts the file again when it finds the older layout later, for example after an older version of the mod rewrote it.
+- Settings move to `CameraUnlock.ini` in the game folder, beside `FalloutNV.exe`. Earlier versions of the mod kept these settings in `HeadTracking.ini`, in the same folder. The first time this version starts and finds no `CameraUnlock.ini`, it reads your settings from `HeadTracking.ini` and writes them into `CameraUnlock.ini`. It never changes `HeadTracking.ini`, and does not read it again while `CameraUnlock.ini` exists.
+- A setting that the defaults the README shows set to `default` is written as `default` when the value imported for it equals its default at that start, which is the value `Defaults.ini` gives it, or the built-in value where `Defaults.ini` gives none. It then follows `Defaults.ini`. Every other setting is written with the value imported for it.
+- `RotationEnabled` and `PositionEnabled` are one setting here, the tracking mode, so both are written as `default` or neither is.
 - Comments, and keys the mod never read, are not carried over. Nor are these, where your old file had them:
   - Reticle settings, and a key that toggled the reticle.
 - Hotkeys are written as key names, and each hotkey lists every key that triggers it, the Ctrl+Shift chord included: `ToggleKey=End, Ctrl+Shift+Y`.
 - Keys that moved or were renamed: `[Network] Port` is `UdpPort`, `[Hotkeys] Toggle` is `ToggleKey`, `CycleTrackingMode` is `CycleTrackingModeKey`, `[Camera] WorldSpaceYaw` is under `[General]`, `[Hotkeys] DebounceMs` is `[Input] HotkeyDebounceMs`, and `[GameState] InputBlockMode` is under `[Input]` and takes `Never`, `MenusOnly`, `AllDialogue` or `AllOverlays` in place of 0 to 3. True and false are written `true` and `false`.
-- An older version of the mod may not read the new layout correctly. It reads a key that moved as its own default, and it can misread a hotkey or another value that is now written as a name. To go back to an older version, first copy `HeadTracking.ini.pre-canonical` back over `HeadTracking.ini`, which restores the old file.
-- The tracking mode (Page Up / Ctrl+Shift+G) and the yaw mode are saved to `HeadTracking.ini` when you change them and come back the next time the game starts. End still turns head tracking on or off for the current session only; the new `[General] EnableOnStartup` (default `true`) says whether it is on when the game starts.
-- The yaw mode chord is Ctrl+Shift+H, the one the reticle toggle used. Ctrl+Shift+J no longer toggles the yaw mode. A new `HeadTracking.ini` toggles it with Page Down / Ctrl+Shift+H. A converted file keeps the yaw mode key it had (the key its `YawModeKey` named, or Delete where it named none) with Ctrl+Shift+H beside it.
+- An older version of the mod reads `HeadTracking.ini` and never reads `CameraUnlock.ini`, so a setting you change after updating is not in `HeadTracking.ini`.
+- Deleting only `CameraUnlock.ini` makes the next start read `HeadTracking.ini` again. To go back to the defaults, replace everything in `CameraUnlock.ini` with the defaults the README shows. Every setting they set to `default` then follows `Defaults.ini`.
+- The tracking mode (Page Up / Ctrl+Shift+G) and the yaw mode are saved to `CameraUnlock.ini` when you change them and come back the next time the game starts. End still turns head tracking on or off for the current session only; the new `[General] EnableOnStartup` (default `true`) says whether it is on when the game starts.
+- The yaw mode chord is Ctrl+Shift+H, the one the reticle toggle used. Ctrl+Shift+J no longer toggles the yaw mode. A new `CameraUnlock.ini` toggles it with Page Down / Ctrl+Shift+H, the built-in default. Settings imported from `HeadTracking.ini` keep the yaw mode key it had (the key its `YawModeKey` named, or Delete where it named none) with Ctrl+Shift+H beside it.
 - Hotkeys act only while the game is the window in front.
 - A `YawModeKey` of Insert (0x2D), which v0.3.1 moved to Delete, toggles the yaw mode on Insert again (e3f6d3f). The files v0.1.0 and v0.2.0 wrote on their first start name Insert.
 - A `[Camera]` section longer than 4094 bytes no longer stops head tracking from loading (e3f6d3f).
+
+### Added
+
+- A setting set to `default` in `CameraUnlock.ini` takes its value from `Defaults.ini`, which every head tracking mod that keeps its settings in `CameraUnlock.ini` reads. Head tracking mods that keep their settings in another file do not read it, and neither do earlier versions of this mod. Writing a value in place of `default` changes that setting for this game only. When the mod saves a setting that a hotkey changed in game, it writes the new value in place of `default`, so that setting no longer follows `Defaults.ini` in this game until you set it to `default` again.
+- `Defaults.ini` is `%AppData%\CameraUnlock\Defaults.ini` on Windows; `$XDG_CONFIG_HOME/CameraUnlock/Defaults.ini` on Linux, or `~/.config/CameraUnlock/Defaults.ini` where `XDG_CONFIG_HOME` is not set, under Wine and Proton too; and `~/Library/Application Support/CameraUnlock/Defaults.ini` on macOS. The mod's log, where it writes one, names the file it read.
+- When the mod starts and finds no `Defaults.ini`, it creates one holding the built-in values, unless Windows runs the game as a packaged app. The mod never changes `Defaults.ini` after that.
 
 ### Removed
 

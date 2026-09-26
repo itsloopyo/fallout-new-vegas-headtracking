@@ -5,18 +5,20 @@
 #include <cameraunlock/config/config_concepts.g.h>
 #include <cameraunlock/config/config_owner.h>
 #include <cameraunlock/config/config_table.h>
+#include <cameraunlock/config/defaults_file.h>
 #include <cameraunlock/config/legacy_import.h>
 #include <cameraunlock/input/key_bindings.h>
 #include <cameraunlock/math/smoothing_utils.h>
 #include <cameraunlock/tracking/tracking_mode.h>
 
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
 
 namespace HeadTracking {
 
-// Every setting HeadTracking.ini holds. Its canonical format, the file's rows
+// Every setting CameraUnlock.ini holds. Its canonical format, the file's rows
 // and their comments are ConfigTable(); ConfigOwner is the only reader and
 // writer of the file.
 struct Config {
@@ -46,12 +48,19 @@ inline constexpr const char* kGameDisplayName = "Fallout: New Vegas";
 
 cameraunlock::config::ConfigTable<Config> ConfigTable();
 
+// The settings file, and the file every build before it read, which the owner
+// imports while the settings file is absent and never writes.
+inline constexpr const wchar_t* kConfigFileName = L"CameraUnlock.ini";
+inline constexpr const wchar_t* kLegacyFileName = L"HeadTracking.ini";
+
 // The import of a HeadTracking.ini an older build wrote: the frozen reader in
 // src/legacy_config/, and the map from what it read into Config.
 cameraunlock::config::LegacyImport<Config> ConfigLegacyImport();
 
-// The owner's options for the file at `path`, a full path.
-cameraunlock::config::ConfigOwnerOptions<Config> ConfigOwnerOptions(std::wstring path);
+// The owner's options for CameraUnlock.ini in `folder`, a full path, with
+// HeadTracking.ini beside it as the legacy file.
+cameraunlock::config::ConfigOwnerOptions<Config> ConfigOwnerOptions(const std::filesystem::path& folder,
+                                                                    cameraunlock::config::DefaultsFile defaults);
 
 // The tracking mode the RotationEnabled / PositionEnabled pair names. The
 // table never gives a config both false.

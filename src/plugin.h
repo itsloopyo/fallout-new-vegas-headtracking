@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
@@ -56,7 +57,8 @@ private:
     HeadTrackingPlugin(HeadTrackingPlugin&&) = delete;
     HeadTrackingPlugin& operator=(HeadTrackingPlugin&&) = delete;
 
-    // Reload HeadTracking.ini when it changed on disk, and apply what it holds.
+    // Reload CameraUnlock.ini when it or Defaults.ini changed on disk, and apply
+    // what it holds.
     void CheckConfigReload();
 
     // Hand the settings to the components: smoothing, yaw mode, game state
@@ -132,7 +134,8 @@ extern HMODULE g_hModule;
 // All if(g_ConsolePrint) checks will fail, effectively disabling console output
 inline void (*g_ConsolePrint)(const char* fmt, ...) = nullptr;
 
-// HeadTracking.ini beside this DLL.
-std::wstring ConfigPath();
+// The folder of this DLL, which holds CameraUnlock.ini and the legacy
+// HeadTracking.ini.
+std::filesystem::path ConfigFolder();
 
 }  // namespace HeadTracking

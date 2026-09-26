@@ -1,6 +1,7 @@
-// HeadTracking.ini on the canonical format: the committed file is what the
-// table renders, a first launch creates exactly those bytes, and each saving
-// control changes the lines of its own rows and no other byte.
+// CameraUnlock.ini on the canonical format: the committed file is the table's
+// fresh render, a first launch creates exactly those bytes, each saving control
+// changes the lines of its own rows and no other byte, and a row holding
+// default takes Defaults.ini's value.
 //
 // fnv_config_tests --render-config <path> writes the rendered file to <path>
 // instead (pixi run render-config).
@@ -15,7 +16,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -43,16 +43,26 @@ std::string ReadBytes(const fs::path& path) {
 }
 
 void WriteBytes(const fs::path& path, const std::string& bytes) {
+    fs::create_directories(path.parent_path());
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
     if (!out) throw std::runtime_error("cannot write " + path.string());
 }
 
+std::string Replace(std::string text, const std::string& from, const std::string& to) {
+    const std::size_t at = text.find(from);
+    if (at == std::string::npos) throw std::logic_error("'" + from + "' is not in the text");
+    return text.replace(at, from.size(), to);
+}
+
 std::string Rendered() {
-    const cfg::ConfigTable<Config> table = HeadTracking::ConfigTable();
     cfg::RenderHeader header;
     header.display_name = HeadTracking::kGameDisplayName;
-    return cfg::RenderCanonical(table, table.defaults(), header);
+    return cfg::RenderCanonicalFresh(HeadTracking::ConfigTable(), header);
+}
+
+cfg::ConfigOwnerOptions<Config> Options(const fs::path& folder, const fs::path& defaults) {
+    return HeadTracking::ConfigOwnerOptions(folder, cfg::DefaultsFile::At(defaults.wstring()));
 }
 
 std::vector<std::string> Lines(const std::string& bytes) {
@@ -115,19 +125,28 @@ void DefaultsAreTheFleetDefaults() {
 }
 
 void SavesChangeOnlyTheirRows(const fs::path& dir) {
-    const fs::path path = dir / "HeadTracking.ini";
-    cfg::ConfigOwner<Config> owner(HeadTracking::ConfigOwnerOptions(path.wstring()));
+    const fs::path folder = dir / "saves";
+    fs::create_directories(folder);
+    const fs::path defaults = dir / "saves-global" / "Defaults.ini";
+    const fs::path path = folder / "CameraUnlock.ini";
+    cfg::ConfigOwner<Config> owner(Options(folder, defaults));
     const auto created = owner.Load();
-    Check(created.status == cfg::ConfigLoadStatus::Created, "a first launch creates the file");
+    Check(created.status == cfg::ConfigLoadStatus::Created,
+          std::string("a first launch creates the file, not ") + cfg::ConfigLoadStatusName(created.status) + ": " +
+              created.reason);
     const std::string fresh = ReadBytes(path);
     Check(fresh == Rendered(), "a first launch writes the committed file's bytes");
+    Check(!fs::exists(folder / "HeadTracking.ini"), "a first launch writes no legacy file");
+    const std::string defaultsBytes = ReadBytes(defaults);
 
-    Check(owner.Save([](Config& c) { c.world_space_yaw = false; }).status == cfg::ConfigSaveStatus::Saved,
-          "the yaw mode saves");
+    const cfg::ConfigSaveResult yawSaved = owner.Save([](Config& c) { c.world_space_yaw = false; });
+    Check(yawSaved.status == cfg::ConfigSaveStatus::Saved, "the yaw mode saves");
+    Check(yawSaved.log.size() == 1 && yawSaved.log[0].find("WorldSpaceYaw=false") != std::string::npos,
+          "the yaw save logs that WorldSpaceYaw no longer follows Defaults.ini");
     const std::string yaw = ReadBytes(path);
     const auto yawChanged = ChangedLines(fresh, yaw);
-    Check(yawChanged.size() == 1 && yawChanged[0] == "WorldSpaceYaw=true -> WorldSpaceYaw=false",
-          "saving the yaw mode changes the WorldSpaceYaw line and no other byte");
+    Check(yawChanged.size() == 1 && yawChanged[0] == "WorldSpaceYaw=default -> WorldSpaceYaw=false",
+          "saving the yaw mode writes its value over default and changes no other byte");
 
     const auto channels = cameraunlock::EncodeTrackingMode(cameraunlock::TrackingMode::PositionOnly);
     Check(owner.Save([channels](Config& c) {
@@ -136,8 +155,10 @@ void SavesChangeOnlyTheirRows(const fs::path& dir) {
                }).status == cfg::ConfigSaveStatus::Saved,
           "the tracking mode saves");
     const auto modeChanged = ChangedLines(yaw, ReadBytes(path));
-    Check(modeChanged.size() == 1 && modeChanged[0] == "RotationEnabled=true -> RotationEnabled=false",
-          "saving position only changes the RotationEnabled line and no other byte");
+    Check(modeChanged.size() == 2 && modeChanged[0] == "RotationEnabled=default -> RotationEnabled=false" &&
+              modeChanged[1] == "PositionEnabled=default -> PositionEnabled=true",
+          "saving position only writes both tracking mode rows over default and changes no other byte");
+    Check(ReadBytes(defaults) == defaultsBytes, "no save changes Defaults.ini");
 
     bool refused = false;
     try {
@@ -149,13 +170,34 @@ void SavesChangeOnlyTheirRows(const fs::path& dir) {
 
     Check(owner.Reload().status == cfg::ConfigReloadStatus::Unchanged, "a reload after a save finds nothing new");
 
-    cfg::ConfigOwner<Config> relaunch(HeadTracking::ConfigOwnerOptions(path.wstring()));
+    cfg::ConfigOwner<Config> relaunch(Options(folder, defaults));
     const auto again = relaunch.Load();
     Check(again.status == cfg::ConfigLoadStatus::Canonical, "the next launch reads the saved file as canonical");
     Check(!again.config.world_space_yaw, "the saved yaw mode comes back");
     Check(HeadTracking::StartupTrackingMode(again.config) == cameraunlock::TrackingMode::PositionOnly,
           "the saved tracking mode comes back");
     Check(again.config.enable_on_startup, "EnableOnStartup stays as the file had it");
+}
+
+// A fresh file holds default on every global row, so a Defaults.ini the player
+// edited reaches the game, and a value the game's own file holds wins over it.
+void DefaultRowsFollowDefaultsIni(const fs::path& dir) {
+    const fs::path folder = dir / "follows";
+    const fs::path defaults = dir / "follows-global" / "Defaults.ini";
+    WriteBytes(folder / "CameraUnlock.ini", Rendered());
+    WriteBytes(defaults,
+               "[CameraUnlock]\r\nConfigFormat=1\r\n\r\n[Network]\r\nUdpPort=5252\r\n\r\n[General]\r\n"
+               "WorldSpaceYaw=false\r\n\r\n[Hotkeys]\r\nToggleKey=F8\r\n");
+    const auto loaded = cfg::ConfigOwner<Config>(Options(folder, defaults)).Load();
+    Check(loaded.status == cfg::ConfigLoadStatus::Canonical, "the committed file loads as canonical");
+    Check(loaded.config.udp_port == 5252 && !loaded.config.world_space_yaw && loaded.config.toggle_key == "F8",
+          "rows holding default take Defaults.ini's values");
+    Check(loaded.config.cycle_tracking_mode_key == "PageUp, Ctrl+Shift+G",
+          "a row Defaults.ini leaves out takes the built-in value");
+
+    WriteBytes(folder / "CameraUnlock.ini", Replace(Rendered(), "WorldSpaceYaw=default\r\n", "WorldSpaceYaw=true\r\n"));
+    Check(cfg::ConfigOwner<Config>(Options(folder, defaults)).Load().config.world_space_yaw,
+          "a value written in CameraUnlock.ini wins over Defaults.ini");
 }
 
 }  // namespace
@@ -174,6 +216,7 @@ int main(int argc, char** argv) {
     RenderMatchesCommittedFile();
     DefaultsAreTheFleetDefaults();
     SavesChangeOnlyTheirRows(dir);
+    DefaultRowsFollowDefaultsIni(dir);
     fs::remove_all(dir);
 
     if (g_failures != 0) {

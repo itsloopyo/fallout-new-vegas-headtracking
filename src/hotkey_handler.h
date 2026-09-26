@@ -11,7 +11,7 @@ namespace HeadTracking {
 
 struct Config;
 
-// The three hotkey lists from HeadTracking.ini on core's HotkeyPoller. Actions
+// The three hotkey lists from CameraUnlock.ini on core's HotkeyPoller. Actions
 // run on the poller's thread, never on the render thread, and only while the
 // game state allows input and the action has not fired within the debounce
 // time.

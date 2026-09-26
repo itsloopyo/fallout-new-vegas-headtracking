@@ -6,7 +6,9 @@
 # copy. Camera hooks require a supported executable profile.
 #
 # There is no script extender in this path. Nothing is written to
-# Data\NVSE\Plugins and nothing downloads xNVSE.
+# Data\NVSE\Plugins and nothing downloads xNVSE. No config is copied: the mod
+# creates CameraUnlock.ini at its first start, importing HeadTracking.ini where
+# an older build left one.
 
 param(
     [string]$Configuration = "Release"
@@ -34,15 +36,10 @@ $gamePaths = Get-FnvInstalls
 
 $buildDir = Join-Path $projectRoot "build\bin\$Configuration"
 $dllSource = Join-Path $buildDir "HeadTracking.dll"
-$iniSource = Join-Path $projectRoot "config\HeadTracking.ini"
 
 if (-not (Test-Path $dllSource)) {
     Write-ColorOutput "ERROR: HeadTracking.dll not found at $dllSource" "Red"
     Write-ColorOutput "Run 'pixi run build-release' first to compile it." "Yellow"
-    exit 1
-}
-if (-not (Test-Path $iniSource)) {
-    Write-ColorOutput "ERROR: HeadTracking.ini not found at $iniSource" "Red"
     exit 1
 }
 
@@ -51,18 +48,9 @@ foreach ($gamePath in $gamePaths) {
     Write-ColorOutput "Deploying to: $gamePath" "Cyan"
 
     $dllDest = Join-Path $gamePath "dsound.dll"
-    $iniDest = Join-Path $gamePath "HeadTracking.ini"
 
     Copy-Item -Path $dllSource -Destination $dllDest -Force
     Write-ColorOutput "  dsound.dll       (the mod)" "Gray"
-
-    # Seeded only when absent, so a redeploy keeps whatever the user tuned.
-    if (Test-Path $iniDest) {
-        Write-ColorOutput "  HeadTracking.ini (kept, already present)" "Gray"
-    } else {
-        Copy-Item -Path $iniSource -Destination $iniDest -Force
-        Write-ColorOutput "  HeadTracking.ini (seeded)" "Gray"
-    }
 
     # An older build of this mod deployed as an xNVSE plugin. Left in place it
     # would load a second copy of the mod alongside the proxy whenever the user

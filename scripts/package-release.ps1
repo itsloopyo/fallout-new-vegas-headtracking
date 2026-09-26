@@ -23,11 +23,8 @@ New-Item -ItemType Directory -Path (Join-Path $stagingDir 'plugins') -Force | Ou
 # shim body copies MOD_DLLS by name, and the manifest deploys plugins/dsound.dll
 # to the same place, so both routes deliver one identical file.
 Copy-Item -LiteralPath (Join-Path $projectRoot 'build/bin/Release/HeadTracking.dll') -Destination (Join-Path $stagingDir 'plugins/dsound.dll')
-Copy-Item -LiteralPath (Join-Path $projectRoot 'config/HeadTracking.ini') -Destination (Join-Path $stagingDir 'plugins')
 $manifest = Get-Content (Join-Path $projectRoot 'launcher-manifest.json') -Raw | ConvertFrom-Json
 $manifest.mod_info.version = $version
-$seed = [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $projectRoot 'config/HeadTracking.ini')))
-$manifest.loader.seed[0].content_b64 = $seed
 foreach ($file in $manifest.files) {
     if (-not (Test-Path -LiteralPath (Join-Path $stagingDir $file.source) -PathType Leaf)) {
         throw "Manifest source missing: $($file.source)"

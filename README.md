@@ -33,10 +33,10 @@ In windowed mode, the game window is centred on its monitor's work area at start
 
 Download the `-installer.zip` from the release, extract it anywhere, and run
 `install.cmd`. It finds the game, backs up any `dsound.dll` already beside
-`FalloutNV.exe`, deploys the mod under that name, and writes `HeadTracking.ini`
-only if you do not have one. `uninstall.cmd` reverses it and puts your backup
-back. Both accept the game folder as an argument if detection picks the wrong
-copy:
+`FalloutNV.exe`, and deploys the mod under that name. It writes no settings
+file: the mod creates `CameraUnlock.ini` beside the game the first time it
+starts. `uninstall.cmd` reverses the install and puts your backup back. Both
+accept the game folder as an argument if detection picks the wrong copy:
 
 ```
 install.cmd "D:\Games\Fallout New Vegas"
@@ -46,12 +46,11 @@ To place the files yourself instead:
 
 1. Copy `plugins/dsound.dll` next to `FalloutNV.exe`. Keep a backup if another
    mod already owns that filename.
-2. Copy `plugins/HeadTracking.ini` to the same directory if you do not already
-   have a `HeadTracking.ini` there.
-3. For an upgrade from the NVSE version, copy your old
-   `Data/NVSE/Plugins/HeadTracking.ini` to the game root to retain your settings,
-   then remove the old `Data/NVSE/Plugins/HeadTracking.dll`.
-4. Configure your tracker for UDP port `4242` and launch the game normally.
+2. For an upgrade from the NVSE version, copy your old
+   `Data/NVSE/Plugins/HeadTracking.ini` to the game root before you first start
+   this version, so it imports your settings, then remove the old
+   `Data/NVSE/Plugins/HeadTracking.dll`.
+3. Configure your tracker for UDP port `4242` and launch the game normally.
 
 The launcher package also updates the legacy NVSE DLL path with a compatibility
 copy. That copy stays dormant when the root proxy is loaded, preventing two
@@ -129,21 +128,22 @@ view sits off to one side, centre it in the tracker.
 | Cycle rotation and position | `Page Up`, `Ctrl+Shift+G` |
 | Toggle yaw mode | `Page Down`, `Ctrl+Shift+H` |
 
-Each action takes every key its line under `[Hotkeys]` in `HeadTracking.ini`
+Each action takes every key its line under `[Hotkeys]` in `CameraUnlock.ini`
 lists, the chord included, so you can change or remove any of them. A key listed
 without Ctrl and Shift does not fire while both are held. Hotkeys act only while
 the game is the window in front.
 
 Page Up cycles full tracking, rotation only, then position only. Page Down
 switches between horizon-locked yaw and camera-local yaw. Both are saved to
-`HeadTracking.ini` as you press them and come back the next time the game
+`CameraUnlock.ini` as you press them and come back the next time the game
 starts. End turns head tracking on or off for the current session only; whether
 it is on when the game starts is `EnableOnStartup`.
 
-A `HeadTracking.ini` from an earlier version keeps the yaw mode key it had: the
-key its `YawModeKey` named, or `Delete` where it named none, with `Ctrl+Shift+H`
-beside it. `Ctrl+Shift+J` no longer toggles yaw mode. The defaults above are what
-a new file holds.
+Settings imported from an earlier version's `HeadTracking.ini` keep the yaw mode
+key it had: the key its `YawModeKey` named, or `Delete` where it named none, with
+`Ctrl+Shift+H` beside it. `Ctrl+Shift+J` no longer toggles yaw mode. The keys
+above are the built-in defaults a new `CameraUnlock.ini` takes through
+`Defaults.ini`.
 
 The gold hip-fire reticle marks your mouse/controller aim as you move your head.
 The game's own sights take over while you aim, so the reticle is hidden then.
@@ -158,7 +158,9 @@ lean down in proportion.
 
 ## Configuration
 
-`HeadTracking.ini` lives next to `FalloutNV.exe`. Changes are reloaded while
+Settings live in `CameraUnlock.ini` next to `FalloutNV.exe`. Earlier versions
+kept them in `HeadTracking.ini`, which this version imports once and never
+changes. Changes to `CameraUnlock.ini` or `Defaults.ini` are reloaded while
 running, except `[Network] UdpPort`, which requires a game restart.
 
 `LocalSmoothing` and `RemoteSmoothing` under `[Smoothing]` select smoothing by
@@ -169,14 +171,22 @@ Positional leaning is limited by the game's world collision to keep the camera
 away from walls.
 
 <!-- cameraunlock:config -->
-The mod reads its settings from `HeadTracking.ini` in the game folder, at one of these paths depending on the store the game came from:
+The mod reads its settings from `CameraUnlock.ini` in the game folder, at one of these paths depending on the store the game came from:
 
-- `HeadTracking.ini`
-- `Fallout New Vegas English\HeadTracking.ini`
+- `CameraUnlock.ini`
+- `Fallout New Vegas English\CameraUnlock.ini`
 
 It creates the file when it starts and finds none. Edit it with any text editor.
 
-Earlier versions of the mod used an older layout for this file. The first time this version starts, it converts the file once into the layout below and keeps the file as it was beside it as `HeadTracking.ini.pre-canonical`. `HeadTracking.ini.pre-canonical.last`, when present, is the file as it was before the most recent conversion: the mod converts the file again when it finds the older layout later, for example after an older version of the mod rewrote it.
+A setting set to `default` takes its value from `Defaults.ini`, which every head tracking mod that keeps its settings in `CameraUnlock.ini` reads. Head tracking mods that keep their settings in another file do not read it, and neither do earlier versions of this mod. Writing a value in place of `default` changes that setting for this game only. When the mod saves a setting that a hotkey changed in game, it writes the new value in place of `default`, so that setting no longer follows `Defaults.ini` in this game until you set it to `default` again.
+
+`Defaults.ini` is `%AppData%\CameraUnlock\Defaults.ini` on Windows; `$XDG_CONFIG_HOME/CameraUnlock/Defaults.ini` on Linux, or `~/.config/CameraUnlock/Defaults.ini` where `XDG_CONFIG_HOME` is not set, under Wine and Proton too; and `~/Library/Application Support/CameraUnlock/Defaults.ini` on macOS. The mod's log, where it writes one, names the file it read.
+
+When the mod starts and finds no `Defaults.ini`, it creates one holding the built-in values, unless Windows runs the game as a packaged app. The mod never changes `Defaults.ini` after that. Edit it with any text editor.
+
+Earlier versions of the mod kept these settings in `HeadTracking.ini`, in the same folder. The first time this version starts and finds no `CameraUnlock.ini`, it reads your settings from `HeadTracking.ini` and writes them into `CameraUnlock.ini`. It never changes `HeadTracking.ini`, and does not read it again while `CameraUnlock.ini` exists.
+
+A setting that the defaults below set to `default` is written as `default` when the value imported for it equals its default at that start, which is the value `Defaults.ini` gives it, or the built-in value where `Defaults.ini` gives none. It then follows `Defaults.ini`. Every other setting is written with the value imported for it. `RotationEnabled` and `PositionEnabled` are one setting here, the tracking mode, so both are written as `default` or neither is.
 
 Comments, and keys the mod never read, are not carried over. Nor are these, where your old file had them:
 
@@ -184,7 +194,22 @@ Comments, and keys the mod never read, are not carried over. Nor are these, wher
 - A sensitivity, scale, deadzone, response curve or axis inversion you changed from its default. Set these in your tracker instead.
 - The setting for a feature that earlier versions shipped switched off while it was untested. It now follows the mod's default.
 
-An older version of the mod may not read the new layout correctly. It reads a key that moved as its own default, and it can misread a hotkey or another value that is now written as a name. To go back to an older version, first copy `HeadTracking.ini.pre-canonical` back over `HeadTracking.ini`, which restores the old file.
+An older version of the mod reads `HeadTracking.ini` and never reads `CameraUnlock.ini`, so a setting you change after updating is not in `HeadTracking.ini`.
+
+Deleting only `CameraUnlock.ini` makes the next start read `HeadTracking.ini` again. To go back to the defaults, replace everything in `CameraUnlock.ini` with the defaults below. Every setting they set to `default` then follows `Defaults.ini`.
+
+The built-in value of each setting set to `default` below:
+
+- `UdpPort=4242`
+- `EnableOnStartup=true`
+- `WorldSpaceYaw=true`
+- `RotationEnabled=true`
+- `LocalSmoothing=0.0`
+- `RemoteSmoothing=0.15`
+- `PositionEnabled=true`
+- `ToggleKey=End, Ctrl+Shift+Y`
+- `CycleTrackingModeKey=PageUp, Ctrl+Shift+G`
+- `YawModeKey=PageDown, Ctrl+Shift+H`
 
 With every setting at its default, the file reads:
 
@@ -192,6 +217,12 @@ With every setting at its default, the file reads:
 ; Fallout: New Vegas head tracking settings.
 ; Comments start with ; and go on their own line. Text after a value is part of the value.
 ; Hotkeys are key names such as End, PageUp or Ctrl+Shift+Y. Separate several with commas; leave empty for none.
+; A setting set to default takes its value from Defaults.ini, which every head tracking mod
+; that keeps its settings in CameraUnlock.ini reads: %AppData%\CameraUnlock\Defaults.ini on
+; Windows, $XDG_CONFIG_HOME/CameraUnlock/Defaults.ini (normally ~/.config/CameraUnlock) on
+; Linux, under Wine and Proton too, and ~/Library/Application Support/CameraUnlock/Defaults.ini
+; on macOS. The log names the file it read. Write a value instead of default to change that
+; setting for this game only.
 
 [CameraUnlock]
 ; Written by the mod. Leave this section in place.
@@ -200,36 +231,36 @@ ConfigFormat=1
 [Network]
 ; UDP port the mod receives tracker data on (OpenTrack protocol).
 ; Restart the game after changing it.
-UdpPort=4242
+UdpPort=default
 
 [General]
 ; true: head tracking is on when the game starts. ToggleKey turns it on and off.
-EnableOnStartup=true
+EnableOnStartup=default
 ; true: yaw turns around the world's up axis. false: around the camera's own up axis.
-WorldSpaceYaw=true
+WorldSpaceYaw=default
 ; true: turning your head turns the view.
 ; Tracking mode at startup, with PositionEnabled. The mode hotkey changes both.
-RotationEnabled=true
+RotationEnabled=default
 
 [Smoothing]
 ; Smoothing when the tracker runs on this PC. 0 is the least, 1 the most.
-LocalSmoothing=0.0
+LocalSmoothing=default
 ; Smoothing when the tracker is another device on the network, such as a phone.
 ; 0 is the least, 1 the most.
-RemoteSmoothing=0.15
+RemoteSmoothing=default
 
 [Position]
 ; true: moving your head moves the view.
 ; Tracking mode at startup, with RotationEnabled. The mode hotkey changes both.
-PositionEnabled=true
+PositionEnabled=default
 
 [Hotkeys]
 ; Turns head tracking on and off.
-ToggleKey=End, Ctrl+Shift+Y
+ToggleKey=default
 ; Changes the tracking mode: rotation and position, rotation only, position only.
-CycleTrackingModeKey=PageUp, Ctrl+Shift+G
+CycleTrackingModeKey=default
 ; Switches yaw between the world's up axis and the camera's own (WorldSpaceYaw).
-YawModeKey=PageDown, Ctrl+Shift+H
+YawModeKey=default
 
 [GameState]
 ; true: head tracking also works in the third-person camera.
@@ -280,9 +311,9 @@ fully resolved.
 Use Lopari to update or remove its installed package. For a manual install, run
 `install.cmd` again to update, and `uninstall.cmd` to remove: it takes out this
 mod's `dsound.dll`, restores any DLL it backed up, and removes the logs. It
-leaves `HeadTracking.ini` in place, with the `HeadTracking.ini.pre-canonical`
-copies an update may have made beside it, so your settings are still there if you
-install again. If you placed the files by hand, remove them the same way, and
+leaves `CameraUnlock.ini`, an earlier version's `HeadTracking.ini` and
+`Defaults.ini` in place, so your settings are still there if you install again.
+If you placed the files by hand, remove them the same way, and
 remove the compatibility `Data/NVSE/Plugins/HeadTracking.dll` too if present.
 Other mods may still need xNVSE.
 

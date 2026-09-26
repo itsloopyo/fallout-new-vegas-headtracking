@@ -28,8 +28,8 @@ uninstall = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/uninstall-
 
 test = { cmd = "ctest --test-dir build -C Release --output-on-failure", depends-on = ["build-release"] }
 
-# Rewrite config/HeadTracking.ini from the config table after a change to a row,
-# a comment or a default, then re-encode the launcher seed from it.
+# Rewrite config/HeadTracking.ini, the table's fresh render, after a change to a
+# row, a comment or a default, then the config descriptor's per_game from it.
 render-config = { cmd = "build/Release/fnv_config_tests.exe --render-config config/HeadTracking.ini && node cameraunlock-core/scripts/encode-seed.mjs", depends-on = ["build-release"] }
 
 # Package release ZIP
@@ -70,3 +70,6 @@ unrelease = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/unrelease.
 # setup-pixi's post-install `pixi list` doesn't error). MSVC itself comes from
 # the system Visual Studio install, selected by CMake's default VS generator.
 cmake = ">=3.20"
+# Node runs the canonical config lint under `test`, render-config's encode-seed
+# step and validate-manifest, pinned to the release core's own lock resolves.
+nodejs = "==26.5.0"
