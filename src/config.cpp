@@ -31,6 +31,8 @@ cfg::ConfigTable<Config> ConfigTable() {
         .Concept<Concept::RemoteSmoothing>(&Config::remote_smoothing)
         .Concept<Concept::PositionEnabled>(&Config::position_enabled)
         .Writable()
+        .Concept<Concept::CollisionEnabled>(&Config::collision_enabled)
+        .Concept<Concept::CollisionReleaseSmoothing>(&Config::collision_release_smoothing)
         .Concept<Concept::ToggleKey>(&Config::toggle_key)
         .Concept<Concept::CycleTrackingModeKey>(&Config::cycle_tracking_mode_key)
         .Concept<Concept::YawModeKey>(&Config::yaw_mode_key)
@@ -115,6 +117,10 @@ cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
     out.rotation_enabled = true;
     out.position_enabled = true;
     out.world_space_yaw = read.worldSpaceYaw;
+    // The published build always held a lean off the walls, easing back out at
+    // core's default release.
+    out.collision_enabled = true;
+    out.collision_release_smoothing = defaults.collision_release_smoothing;
     // The range checks let a NaN through, which N2 takes to the default.
     out.local_smoothing =
         cfg::LegacyFiniteOrDefault(read.localSmoothing, defaults.local_smoothing, "Smoothing", "LocalSmoothing", dropped);

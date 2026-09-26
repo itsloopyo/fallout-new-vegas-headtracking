@@ -2,6 +2,7 @@
 
 #include "game_state.h"
 
+#include <cameraunlock/camera/lean_clamp.h>
 #include <cameraunlock/config/config_concepts.g.h>
 #include <cameraunlock/config/config_owner.h>
 #include <cameraunlock/config/config_table.h>
@@ -30,6 +31,8 @@ struct Config {
     double local_smoothing = cameraunlock::math::kDefaultLocalSmoothing;
     double remote_smoothing = cameraunlock::math::kDefaultRemoteSmoothing;
     bool position_enabled = true;
+    bool collision_enabled = true;
+    float collision_release_smoothing = cameraunlock::camera::LeanClampSettings{}.release_smoothing;
     std::string toggle_key =
         cameraunlock::config::schema::ConceptTraits<cameraunlock::config::schema::Concept::ToggleKey>::kCanonicalDefault;
     std::string cycle_tracking_mode_key = cameraunlock::config::schema::ConceptTraits<

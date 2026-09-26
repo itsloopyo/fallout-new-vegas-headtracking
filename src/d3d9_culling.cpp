@@ -144,8 +144,14 @@ static bool PositionStillHasOurOffset(float* pos) {
 
 static cameraunlock::camera::LeanClamp s_leanClamp;
 
+static cameraunlock::camera::LeanObstruction QueryLean(void*, const cameraunlock::math::Vec3& start,
+                                                       const cameraunlock::math::Vec3& direction, float distance) {
+    const auto hit = TraceWorld(start, direction, distance, true);
+    return cameraunlock::camera::LeanObstruction{hit.queried, hit.blocked, hit.distance};
+}
+
 static void ApplyCameraPositionOffset(float* camPos, float posX, float posY, float posZ,
-                                      float nearClip) {
+                                      float nearClip, const CameraController& controller) {
     if (PositionStillHasOurOffset(camPos)) {
         memcpy(camPos, s_positionBefore, sizeof(s_positionBefore));
     }
@@ -157,16 +163,17 @@ static void ApplyCameraPositionOffset(float* camPos, float posX, float posY, flo
                        posX*m[8] + posY*m[7] + posZ*m[6]};
     cameraunlock::camera::LeanClampSettings settings;
     settings.skin = nearClip + 1.0f;
+    settings.release_smoothing = controller.GetLeanReleaseSmoothing();
     s_leanClamp.SetSettings(settings);
+    // With the sweep off no allowance may carry over to when it is back on.
+    const bool collision = controller.IsLeanCollisionEnabled();
+    if (!collision) s_leanClamp.Reset();
     static ULONGLONG previous = GetTickCount64();
     const ULONGLONG now = GetTickCount64();
     const float dt = static_cast<float>(now - previous) * 0.001f;
     previous = now;
     const Vec3 offset = s_leanClamp.Apply({camPos[0], camPos[1], camPos[2]}, desired, dt,
-        [](void*, const Vec3& start, const Vec3& direction, float distance) {
-            const auto hit = TraceWorld(start, direction, distance, true);
-            return cameraunlock::camera::LeanObstruction{hit.queried, hit.blocked, hit.distance};
-        }, nullptr);
+                                          collision ? &QueryLean : nullptr, nullptr);
     if (s_leanClamp.LastQueryFailed()) {
         D3D9Hook::SignalFatalError("camera collision query");
         return;
@@ -349,7 +356,7 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
             ApplyCameraPositionOffset(camPos,
                 posX * kGameUnitsPerMeter,
                 posY * kGameUnitsPerMeter,
-                posZ * kGameUnitsPerMeter, f[4]);
+                posZ * kGameUnitsPerMeter, f[4], *controller);
         }
     }
     if (isMainCamera && controller && controller->IsActive() && !IsGamePaused() &&

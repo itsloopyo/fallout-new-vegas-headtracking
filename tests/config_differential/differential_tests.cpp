@@ -171,7 +171,8 @@ std::vector<Input> Inputs() {
 // The import as the game ran it: the frozen reader, then the startup code at
 // ecb14e4 (HeadTrackingPlugin::Initialize, Config::ApplyToComponents and the
 // HotkeyHandler), which started enabled, in the rotation and position mode,
-// with each action's code and its fixed Ctrl+Shift letter.
+// with each action's code and its fixed Ctrl+Shift letter, and always held a
+// lean off the walls at LeanClampSettings' default release of 0.9.
 Record ImportRecord(const fs::path& path) {
     HeadTracking::legacy::Config config;
     const auto read = HeadTracking::legacy::Read(path.string(), config);
@@ -199,6 +200,8 @@ Record ImportRecord(const fs::path& path) {
     record["startup.enabled"] = "1";
     record["startup.mode"] = "RotationAndPosition";
     record["startup.worldSpaceYaw"] = Flag(config.worldSpaceYaw);
+    record["startup.leanCollision"] = "1";
+    record["startup.leanReleaseSmoothing"] = Bits(0.9f);
     record["hotkey.Toggle"] = Bindings({{0, config.toggleKey}, {kCtrlShift, 'Y'}});
     record["hotkey.CycleTrackingMode"] = Bindings({{0, config.cycleTrackingModeKey}, {kCtrlShift, 'G'}});
     record["hotkey.ReticleToggle"] = Bindings({{0, config.reticleToggleKey}, {kCtrlShift, 'H'}});
@@ -343,6 +346,8 @@ Record ConfigRecord(const Config& config) {
     record["startup.enabled"] = Flag(config.enable_on_startup);
     record["startup.mode"] = ModeName(HeadTracking::StartupTrackingMode(config));
     record["startup.worldSpaceYaw"] = Flag(config.world_space_yaw);
+    record["startup.leanCollision"] = Flag(config.collision_enabled);
+    record["startup.leanReleaseSmoothing"] = Bits(config.collision_release_smoothing);
     record["hotkey.Toggle"] = ListBindings(config.toggle_key);
     record["hotkey.CycleTrackingMode"] = ListBindings(config.cycle_tracking_mode_key);
     record["hotkey.YawMode"] = ListBindings(config.yaw_mode_key);
@@ -580,7 +585,7 @@ const char* const kSkewedDefaults =
     "[Network]\r\nUdpPort=5252\r\n\r\n"
     "[General]\r\nEnableOnStartup=false\r\nWorldSpaceYaw=false\r\nRotationEnabled=false\r\n\r\n"
     "[Smoothing]\r\nLocalSmoothing=0.5\r\nRemoteSmoothing=0.5\r\n\r\n"
-    "[Position]\r\nPositionEnabled=true\r\n\r\n"
+    "[Position]\r\nPositionEnabled=true\r\nCollisionEnabled=false\r\nCollisionReleaseSmoothing=0.5\r\n\r\n"
     "[Hotkeys]\r\nToggleKey=F8\r\nCycleTrackingModeKey=F9\r\nYawModeKey=F10\r\n";
 
 fs::path MigratedFolder() {

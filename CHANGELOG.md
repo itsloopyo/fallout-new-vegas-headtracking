@@ -30,6 +30,7 @@
 - A setting set to `default` in `CameraUnlock.ini` takes its value from `Defaults.ini`, which every head tracking mod that keeps its settings in `CameraUnlock.ini` reads. Head tracking mods that keep their settings in another file do not read it, and neither do earlier versions of this mod. Writing a value in place of `default` changes that setting for this game only. When the mod saves a setting that a hotkey changed in game, it writes the new value in place of `default`, so that setting no longer follows `Defaults.ini` in this game until you set it to `default` again.
 - `Defaults.ini` is `%AppData%\CameraUnlock\Defaults.ini` on Windows; `$XDG_CONFIG_HOME/CameraUnlock/Defaults.ini` on Linux, or `~/.config/CameraUnlock/Defaults.ini` where `XDG_CONFIG_HOME` is not set, under Wine and Proton too; and `~/Library/Application Support/CameraUnlock/Defaults.ini` on macOS. The mod's log, where it writes one, names the file it read.
 - When the mod starts and finds no `Defaults.ini`, it creates one holding the built-in values, unless Windows runs the game as a packaged app. The mod never changes `Defaults.ini` after that.
+- `[Position] CollisionEnabled` and `CollisionReleaseSmoothing` in `CameraUnlock.ini`. Both start as `default`, whose built-in values (`true` and `0.9`) are how 0.3.1 ran: leaning stops at walls, and once a wall is clear the lean eases back out over about 200 ms. `CollisionEnabled=false` lets a lean move the view through walls. Settings imported from `HeadTracking.ini` keep both as 0.3.1 ran them.
 
 ### Removed
 

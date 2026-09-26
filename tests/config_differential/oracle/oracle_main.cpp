@@ -63,6 +63,10 @@ Record Read(const std::string& path) {
     record["startup.enabled"] = "1";
     record["startup.mode"] = "RotationAndPosition";
     record["startup.worldSpaceYaw"] = Flag(config.m_worldSpaceYaw);
+    // v0.3.1's culling hook: the lean sweep always ran, with core c480d8a's
+    // LeanClampSettings default release of 0.9 and no setting for either.
+    record["startup.leanCollision"] = "1";
+    record["startup.leanReleaseSmoothing"] = Bits(0.9f);
     record["startup.adsMode"] = cameraunlock::ads::AdsModeValue(config.m_adsMode);
 
     // v0.3.1's HotkeyHandler: each action's nav-cluster code, which does not

@@ -4,6 +4,8 @@
 
 #include "tracking_data.h"
 
+#include <cameraunlock/camera/lean_clamp.h>
+
 #include <cstdint>
 
 namespace HeadTracking {
@@ -48,6 +50,15 @@ public:
     void SetWorldSpaceYaw(bool worldSpace);
     bool IsWorldSpaceYaw() const { return m_worldSpaceYaw; }
 
+    // Lean collision: whether the D3D9 culling hook holds a lean off the walls,
+    // and how gently the lean reopens once they clear.
+    void SetLeanCollision(bool enabled, float releaseSmoothing) {
+        m_leanCollision = enabled;
+        m_leanReleaseSmoothing = releaseSmoothing;
+    }
+    bool IsLeanCollisionEnabled() const { return m_leanCollision; }
+    float GetLeanReleaseSmoothing() const { return m_leanReleaseSmoothing; }
+
     // Get current applied offsets (used by D3D hook in decoupled mode)
     double GetCurrentYawOffset() const { return m_rotationEnabled ? m_smoothedYaw : 0.0; }
     double GetCurrentPitchOffset() const { return m_rotationEnabled ? m_smoothedPitch : 0.0; }
@@ -86,6 +97,8 @@ private:
     bool m_remoteConnection;
     // Yaw mode: true = world-space (horizon-locked), false = camera-local
     bool m_worldSpaceYaw;
+    bool m_leanCollision = true;
+    float m_leanReleaseSmoothing = cameraunlock::camera::LeanClampSettings{}.release_smoothing;
 
     // Position offset (meters) - computed by plugin, consumed by D3D9 hook
     float m_posX = 0.0f;

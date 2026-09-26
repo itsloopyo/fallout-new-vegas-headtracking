@@ -330,6 +330,9 @@ void HeadTrackingPlugin::ApplyConfig(const Config& config) {
     m_cameraController->SetWorldSpaceYaw(config.world_space_yaw);
     m_appliedWorldYaw.store(config.world_space_yaw);
     m_desiredWorldYaw.store(config.world_space_yaw);
+    m_cameraController->SetLeanCollision(config.collision_enabled, config.collision_release_smoothing);
+    culog::Line("Lean collision: %s, release smoothing %.2f", config.collision_enabled ? "on" : "off",
+                config.collision_release_smoothing);
 
     m_gameState->SetInputBlockMode(config.input_block_mode);
     m_gameState->SetTrackInThirdPerson(config.track_in_third_person);
