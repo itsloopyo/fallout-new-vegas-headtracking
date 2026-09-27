@@ -59,6 +59,11 @@ public:
     bool IsLeanCollisionEnabled() const { return m_leanCollision; }
     float GetLeanReleaseSmoothing() const { return m_leanReleaseSmoothing; }
 
+    // true: the weapon pass draws from the leaned eye (true free look).
+    // false: it draws from the clean eye, keeping the sights on the eye.
+    void SetTrueFreeLook(bool enabled) { m_trueFreeLook = enabled; }
+    bool IsTrueFreeLook() const { return m_trueFreeLook; }
+
     // Get current applied offsets (used by D3D hook in decoupled mode)
     double GetCurrentYawOffset() const { return m_rotationEnabled ? m_smoothedYaw : 0.0; }
     double GetCurrentPitchOffset() const { return m_rotationEnabled ? m_smoothedPitch : 0.0; }
@@ -97,6 +102,7 @@ private:
     bool m_remoteConnection;
     // Yaw mode: true = world-space (horizon-locked), false = camera-local
     bool m_worldSpaceYaw;
+    bool m_trueFreeLook = false;
     bool m_leanCollision = true;
     float m_leanReleaseSmoothing = cameraunlock::camera::LeanClampSettings{}.release_smoothing;
 

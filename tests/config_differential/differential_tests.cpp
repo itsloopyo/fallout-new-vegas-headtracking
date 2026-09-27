@@ -359,9 +359,11 @@ Record ConfigRecord(const Config& config) {
     record["startup.worldSpaceYaw"] = Flag(config.world_space_yaw);
     record["startup.leanCollision"] = Flag(config.collision_enabled);
     record["startup.leanReleaseSmoothing"] = Bits(config.collision_release_smoothing);
+    record["startup.trueFreeLook"] = Flag(config.true_free_look);
     record["hotkey.Toggle"] = ListBindings(config.toggle_key);
     record["hotkey.CycleTrackingMode"] = ListBindings(config.cycle_tracking_mode_key);
     record["hotkey.YawMode"] = ListBindings(config.yaw_mode_key);
+    record["hotkey.TrueFreeLook"] = ListBindings(config.true_free_look_key);
     return record;
 }
 
@@ -418,9 +420,11 @@ std::optional<Concept> RowOf(const std::string& entry) {
         {"startup.mode", Concept::RotationEnabled},
         {"startup.leanCollision", Concept::CollisionEnabled},
         {"startup.leanReleaseSmoothing", Concept::CollisionReleaseSmoothing},
+        {"startup.trueFreeLook", Concept::TrueFreeLook},
         {"hotkey.Toggle", Concept::ToggleKey},
         {"hotkey.CycleTrackingMode", Concept::CycleTrackingModeKey},
         {"hotkey.YawMode", Concept::YawModeKey},
+        {"hotkey.TrueFreeLook", Concept::TrueFreeLookKey},
     };
     const auto it = rows.find(entry);
     return it == rows.end() ? std::nullopt : std::optional<Concept>(it->second);
@@ -432,6 +436,7 @@ const std::set<Concept>& AllRows() {
         Concept::RotationEnabled, Concept::PositionEnabled,  Concept::LocalSmoothing,
         Concept::RemoteSmoothing, Concept::CollisionEnabled, Concept::CollisionReleaseSmoothing,
         Concept::ToggleKey,       Concept::CycleTrackingModeKey, Concept::YawModeKey,
+        Concept::TrueFreeLook,    Concept::TrueFreeLookKey,
     };
     return all;
 }
@@ -683,8 +688,9 @@ const char* const kSkewedDefaults =
     "[Network]\r\nUdpPort=5252\r\n\r\n"
     "[General]\r\nEnableOnStartup=false\r\nWorldSpaceYaw=false\r\nRotationEnabled=false\r\n\r\n"
     "[Smoothing]\r\nLocalSmoothing=0.5\r\nRemoteSmoothing=0.5\r\n\r\n"
-    "[Position]\r\nPositionEnabled=true\r\nCollisionEnabled=false\r\nCollisionReleaseSmoothing=0.5\r\n\r\n"
-    "[Hotkeys]\r\nToggleKey=F8\r\nCycleTrackingModeKey=F9\r\nYawModeKey=F10\r\n";
+    "[Position]\r\nPositionEnabled=true\r\nCollisionEnabled=false\r\nCollisionReleaseSmoothing=0.5\r\n"
+    "TrueFreeLook=true\r\n\r\n"
+    "[Hotkeys]\r\nToggleKey=F8\r\nCycleTrackingModeKey=F9\r\nYawModeKey=F10\r\nTrueFreeLookKey=F11\r\n";
 
 // What kSkewedDefaults gives each global row.
 Record SkewedRecord() {
@@ -701,6 +707,8 @@ Record SkewedRecord() {
     c.toggle_key = "F8";
     c.cycle_tracking_mode_key = "F9";
     c.yaw_mode_key = "F10";
+    c.true_free_look = true;
+    c.true_free_look_key = "F11";
     return ConfigRecord(c);
 }
 

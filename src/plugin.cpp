@@ -58,6 +58,7 @@ HeadTrackingPlugin::HeadTrackingPlugin()
         [this] { OnToggleKey(); },
         [this] { OnCycleTrackingModeKey(); },
         [this] { OnToggleYawModeKey(); },
+        [this] { OnToggleTrueFreeLookKey(); },
     });
 }
 
@@ -283,6 +284,13 @@ void HeadTrackingPlugin::OnToggleYawModeKey() {
     Save([next](Config& config) { config.world_space_yaw = next; });
 }
 
+void HeadTrackingPlugin::OnToggleTrueFreeLookKey() {
+    const bool next = !m_appliedFreeLook.load();
+    m_desiredFreeLook.store(next);
+    m_freeLookRequest.Request();
+    Save([next](Config& config) { config.true_free_look = next; });
+}
+
 void HeadTrackingPlugin::Save(const std::function<void(Config&)>& change) {
     const cameraunlock::config::ConfigSaveResult saved = m_configOwner->Save(change);
     // A save that succeeds can carry a line too, naming a row that stopped
@@ -307,6 +315,15 @@ void HeadTrackingPlugin::ApplyRequestedActions() {
         m_appliedWorldYaw.store(worldSpace);
         culog::Line("Yaw mode: %s", worldSpace ? "world-space (horizon-locked)" : "camera-local");
     }
+    if (m_freeLookRequest.Consume()) {
+        ApplyTrueFreeLook(m_desiredFreeLook.load());
+    }
+}
+
+void HeadTrackingPlugin::ApplyTrueFreeLook(bool enabled) {
+    m_cameraController->SetTrueFreeLook(enabled);
+    m_appliedFreeLook.store(enabled);
+    culog::Line(enabled ? "True free look: ON" : "True free look: OFF (sights locked)");
 }
 
 void HeadTrackingPlugin::ApplyTrackingMode(cameraunlock::TrackingMode mode) {
@@ -330,6 +347,8 @@ void HeadTrackingPlugin::ApplyConfig(const Config& config) {
     m_cameraController->SetWorldSpaceYaw(config.world_space_yaw);
     m_appliedWorldYaw.store(config.world_space_yaw);
     m_desiredWorldYaw.store(config.world_space_yaw);
+    m_desiredFreeLook.store(config.true_free_look);
+    ApplyTrueFreeLook(config.true_free_look);
     m_cameraController->SetLeanCollision(config.collision_enabled, config.collision_release_smoothing);
     culog::Line("Lean collision: %s, release smoothing %.2f", config.collision_enabled ? "on" : "off",
                 config.collision_release_smoothing);

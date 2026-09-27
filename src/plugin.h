@@ -67,13 +67,15 @@ private:
     void ApplyConfig(const Config& config);
 
     void ApplyTrackingMode(cameraunlock::TrackingMode mode);
+    void ApplyTrueFreeLook(bool enabled);
 
     // Hotkey actions, on the poller thread. The toggle changes this session
-    // only; the mode and yaw toggles store the state they want, ask the render
-    // thread to apply it, and save it.
+    // only; the mode, yaw and true free look toggles store the state they want,
+    // ask the render thread to apply it, and save it.
     void OnToggleKey();
     void OnCycleTrackingModeKey();
     void OnToggleYawModeKey();
+    void OnToggleTrueFreeLookKey();
     void Save(const std::function<void(Config&)>& change);
 
     // Carries out what the hotkeys asked for since the last frame.
@@ -107,16 +109,19 @@ private:
     int64_t m_lastPositionTimestampUs = 0;
     bool m_positionEnabled = true;
 
-    // The mode and yaw toggles use the desired-state pattern: the poller thread
+    // The mode, yaw and true free look toggles use the desired-state pattern: the poller thread
     // computes the next state from the one the render thread last applied, so
     // two presses before one frame take one step.
     cameraunlock::input::DeferredAction m_toggleRequest;
     cameraunlock::input::DeferredAction m_modeRequest;
     cameraunlock::input::DeferredAction m_yawRequest;
+    cameraunlock::input::DeferredAction m_freeLookRequest;
     std::atomic<cameraunlock::TrackingMode> m_appliedMode{cameraunlock::TrackingMode::RotationAndPosition};
     std::atomic<cameraunlock::TrackingMode> m_desiredMode{cameraunlock::TrackingMode::RotationAndPosition};
     std::atomic<bool> m_appliedWorldYaw{true};
     std::atomic<bool> m_desiredWorldYaw{true};
+    std::atomic<bool> m_appliedFreeLook{false};
+    std::atomic<bool> m_desiredFreeLook{false};
 
     bool m_initialized;
     bool m_gameLoaded;

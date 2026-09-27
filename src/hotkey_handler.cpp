@@ -34,6 +34,7 @@ void HotkeyHandler::Bind(const Config& config) {
     add(config.toggle_key, kToggle, m_actions.toggle);
     add(config.cycle_tracking_mode_key, kCycleTrackingMode, m_actions.cycleTrackingMode);
     add(config.yaw_mode_key, kToggleYawMode, m_actions.toggleYawMode);
+    add(config.true_free_look_key, kToggleTrueFreeLook, m_actions.toggleTrueFreeLook);
 }
 
 void HotkeyHandler::Start() { m_poller.Start(); }

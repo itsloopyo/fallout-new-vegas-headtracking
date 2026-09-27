@@ -31,6 +31,9 @@ struct Config {
     double local_smoothing = cameraunlock::math::kDefaultLocalSmoothing;
     double remote_smoothing = cameraunlock::math::kDefaultRemoteSmoothing;
     bool position_enabled = true;
+    // false: sights locked. true: true free look, the weapon pass draws from the
+    // leaned eye.
+    bool true_free_look = false;
     bool collision_enabled = true;
     float collision_release_smoothing = cameraunlock::camera::LeanClampSettings{}.release_smoothing;
     std::string toggle_key =
@@ -39,6 +42,8 @@ struct Config {
         cameraunlock::config::schema::Concept::CycleTrackingModeKey>::kCanonicalDefault;
     std::string yaw_mode_key =
         cameraunlock::config::schema::ConceptTraits<cameraunlock::config::schema::Concept::YawModeKey>::kCanonicalDefault;
+    std::string true_free_look_key = cameraunlock::config::schema::ConceptTraits<
+        cameraunlock::config::schema::Concept::TrueFreeLookKey>::kCanonicalDefault;
     bool track_in_third_person = true;
     bool track_in_vats = false;
     bool pause_during_combat = false;

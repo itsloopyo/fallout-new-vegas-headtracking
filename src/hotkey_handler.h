@@ -11,7 +11,7 @@ namespace HeadTracking {
 
 struct Config;
 
-// The three hotkey lists from CameraUnlock.ini on core's HotkeyPoller. Actions
+// The four hotkey lists from CameraUnlock.ini on core's HotkeyPoller. Actions
 // run on the poller's thread, never on the render thread, and only while the
 // game state allows input and the action has not fired within the debounce
 // time.
@@ -21,6 +21,7 @@ public:
         std::function<void()> toggle;
         std::function<void()> cycleTrackingMode;
         std::function<void()> toggleYawMode;
+        std::function<void()> toggleTrueFreeLook;
     };
 
     explicit HotkeyHandler(Actions actions);
@@ -39,7 +40,7 @@ public:
     void SetInputAllowed(bool allowed) { m_inputAllowed.store(allowed); }
 
 private:
-    enum Slot { kToggle, kCycleTrackingMode, kToggleYawMode, kSlotCount };
+    enum Slot { kToggle, kCycleTrackingMode, kToggleYawMode, kToggleTrueFreeLook, kSlotCount };
 
     std::function<void()> Guarded(Slot slot, std::function<void()> action);
 

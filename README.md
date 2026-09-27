@@ -127,6 +127,7 @@ view sits off to one side, centre it in the tracker.
 | Toggle tracking | `End`, `Ctrl+Shift+Y` |
 | Cycle rotation and position | `Page Up`, `Ctrl+Shift+G` |
 | Toggle yaw mode | `Page Down`, `Ctrl+Shift+H` |
+| Toggle true free look | `Insert`, `Ctrl+Shift+U` |
 
 Each action takes every key its line under `[Hotkeys]` in `CameraUnlock.ini`
 lists, the chord included, so you can change or remove any of them. A key listed
@@ -134,7 +135,8 @@ without Ctrl and Shift does not fire while both are held. Hotkeys act only while
 the game is the window in front.
 
 Page Up cycles full tracking, rotation only, then position only. Page Down
-switches between horizon-locked yaw and camera-local yaw. Both are saved to
+switches between horizon-locked yaw and camera-local yaw. Insert switches true
+free look on and off (see Aiming down sights). All three are saved to
 `CameraUnlock.ini` as you press them and come back the next time the game
 starts. End turns head tracking on or off for the current session only; whether
 it is on when the game starts is `EnableOnStartup`.
@@ -149,9 +151,14 @@ The game's own sights take over while you aim, so the reticle is hidden then.
 
 Head tracking stays on while you aim. The weapon stays where your mouse or
 controller points it, so with your head turned it sits off to one side with its
-sights still lined up, and your rounds land where those sights point. When the
-game narrows its field of view as you zoom, the mod scales head yaw, pitch and
-lean down in proportion.
+sights still lined up, and your rounds land where those sights point. Head
+movement is scaled to the zoom, so a scope does not magnify it.
+
+By default leaning never takes your eye off the sights. `Insert` /
+`Ctrl+Shift+U` switches to **true free look**: the weapon stays put and your
+head moves freely around it, so to see down the sights you have to put your head
+behind them, as you would in VR. It is hard, and it is off by default. The mod
+saves the mode you pick, so it holds the next time you start the game.
 
 ## Configuration
 
@@ -190,11 +197,13 @@ The built-in value of each setting set to `default` below:
 - `LocalSmoothing=0.0`
 - `RemoteSmoothing=0.15`
 - `PositionEnabled=true`
+- `TrueFreeLook=false`
 - `CollisionEnabled=true`
 - `CollisionReleaseSmoothing=0.9`
 - `ToggleKey=End, Ctrl+Shift+Y`
 - `CycleTrackingModeKey=PageUp, Ctrl+Shift+G`
 - `YawModeKey=PageDown, Ctrl+Shift+H`
+- `TrueFreeLookKey=Insert, Ctrl+Shift+U`
 
 With every setting at its default, the file reads:
 
@@ -238,6 +247,9 @@ RemoteSmoothing=default
 ; true: moving your head moves the view.
 ; Tracking mode at startup, with RotationEnabled. The mode hotkey changes both.
 PositionEnabled=default
+; false: while you aim down the sights, leaning keeps your eye on the sights.
+; true: the weapon stays put and your head moves freely around it (true free look).
+TrueFreeLook=default
 ; true: leaning stops at walls instead of moving the view through them.
 CollisionEnabled=default
 ; How gently the view eases back out after a wall stopped a lean.
@@ -251,6 +263,8 @@ ToggleKey=default
 CycleTrackingModeKey=default
 ; Switches yaw between the world's up axis and the camera's own (WorldSpaceYaw).
 YawModeKey=default
+; Switches between keeping your eye on the sights and true free look (TrueFreeLook).
+TrueFreeLookKey=default
 
 [GameState]
 ; true: head tracking also works in the third-person camera.
@@ -289,6 +303,10 @@ awkward at steep viewing angles, switch yaw mode with the key `YawModeKey` lists
 **The weapon is off to one side when I aim down sights.** Your head is turned:
 the weapon stays on your aim and you are looking past it. Turn back to it, or
 move your aim to where you are looking.
+
+**I can't see down the sights, they are misaligned.** You are in true free
+look and your head is leaned off them. Move your head back behind them, or
+press `Insert` / `Ctrl+Shift+U` to return to sights locked.
 
 ### Known limitation
 

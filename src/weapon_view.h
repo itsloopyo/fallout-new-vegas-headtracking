@@ -7,17 +7,24 @@ namespace HeadTracking {
 struct WeaponView {
     bool valid = false;
     float rotation[9]{};
+    // The lean in the clean camera's basis, zero in sights locked.
+    float translation[3]{};
     float tanX = 0;
     float tanY = 0;
 
-    // The weapon camera keeps its clean eye position: a lean parallaxes the
-    // world past the weapon instead of throwing the weapon off its sights.
-    void Capture(const float* clean, const float* tracked, float worldTanX, float worldTanY) {
+    // Sights locked keeps the weapon camera at the clean eye, so a lean
+    // parallaxes the world past the weapon instead of throwing it off its
+    // sights. True free look moves it with the collision-clamped world lean
+    // `offset`, so the weapon stays put in the world while the eye leaves it.
+    void Capture(const float* clean, const float* tracked, const float* offset, bool trueFreeLook,
+                 float worldTanX, float worldTanY) {
         for (int row = 0; row < 3; ++row) {
+            translation[row] = 0;
             for (int col = 0; col < 3; ++col) {
                 rotation[row * 3 + col] = 0;
                 for (int k = 0; k < 3; ++k)
                     rotation[row * 3 + col] += clean[k * 3 + row] * tracked[k * 3 + col];
+                if (trueFreeLook) translation[row] += clean[col * 3 + row] * offset[col];
             }
         }
         tanX = worldTanX;
@@ -46,15 +53,17 @@ struct WeaponView {
         relative[7] = relative[2]*relative[3] - relative[0]*relative[5];
         relative[8] = relative[0]*relative[4] - relative[1]*relative[3];
 
-        float result[9];
+        float result[12];
         for (int row = 0; row < 3; ++row) {
+            result[9 + row] = transform[9 + row];
             for (int col = 0; col < 3; ++col) {
                 result[row * 3 + col] = 0;
                 for (int k = 0; k < 3; ++k)
                     result[row * 3 + col] += transform[row * 3 + k] * relative[k * 3 + col];
+                result[9 + row] += transform[row * 3 + col] * translation[col];
             }
         }
-        for (int i = 0; i < 9; ++i) transform[i] = result[i];
+        for (int i = 0; i < 12; ++i) transform[i] = result[i];
     }
 };
 

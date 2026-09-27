@@ -34,7 +34,7 @@ set "SHIM_MARKER=FNV Head Tracking v"
 :: older version then, which a seeded CameraUnlock.ini would stop.
 set "MOD_SEED_FILES="
 :: Post-install help text. `&echo ` starts each further line.
-set "MOD_CONTROLS=Controls (defaults, set in CameraUnlock.ini):&echo   End      / Ctrl+Shift+Y  Toggle head tracking&echo   PageUp   / Ctrl+Shift+G  Cycle tracking mode&echo   PageDown / Ctrl+Shift+H  Toggle yaw mode"
+set "MOD_CONTROLS=Controls (defaults, set in CameraUnlock.ini):&echo   End      / Ctrl+Shift+Y  Toggle head tracking&echo   PageUp   / Ctrl+Shift+G  Cycle tracking mode&echo   PageDown / Ctrl+Shift+H  Toggle yaw mode&echo   Insert   / Ctrl+Shift+U  Toggle true free look"
 :: Not used by this mod. Set blank so a value another mod's wrapper left in
 :: the same console does not reach the body.
 set "SHIM_MARKER_ALT="

@@ -115,6 +115,13 @@ void DefaultsAreTheFleetDefaults() {
     Check(defaults.cycle_tracking_mode_key == "PageUp, Ctrl+Shift+G", "CycleTrackingModeKey defaults to PageUp, Ctrl+Shift+G");
     Check(defaults.yaw_mode_key == "PageDown, Ctrl+Shift+H", "YawModeKey defaults to PageDown, Ctrl+Shift+H");
     Check(defaults.world_space_yaw, "WorldSpaceYaw defaults to true");
+    Check(!defaults.true_free_look, "TrueFreeLook defaults to false, sights locked");
+    Check(defaults.true_free_look_key == "Insert, Ctrl+Shift+U", "TrueFreeLookKey defaults to Insert, Ctrl+Shift+U");
+    const auto freeLook = HeadTracking::KeyBindings(defaults.true_free_look_key);
+    Check(freeLook.size() == 2 && freeLook[0].vk == VK_INSERT &&
+              freeLook[0].modifiers == cameraunlock::input::KeyModifiers::kNone && freeLook[1].vk == 'U' &&
+              freeLook[1].modifiers == (cameraunlock::input::KeyModifiers::kCtrl | cameraunlock::input::KeyModifiers::kShift),
+          "TrueFreeLookKey registers Insert and Ctrl+Shift+U");
     Check(HeadTracking::StartupTrackingMode(defaults) == cameraunlock::TrackingMode::RotationAndPosition,
           "the default tracking mode is rotation and position");
     const auto toggle = HeadTracking::KeyBindings(defaults.toggle_key);
@@ -158,6 +165,12 @@ void SavesChangeOnlyTheirRows(const fs::path& dir) {
     Check(modeChanged.size() == 2 && modeChanged[0] == "RotationEnabled=default -> RotationEnabled=false" &&
               modeChanged[1] == "PositionEnabled=default -> PositionEnabled=true",
           "saving position only writes both tracking mode rows over default and changes no other byte");
+    const std::string mode = ReadBytes(path);
+    Check(owner.Save([](Config& c) { c.true_free_look = true; }).status == cfg::ConfigSaveStatus::Saved,
+          "true free look saves");
+    const auto freeLookChanged = ChangedLines(mode, ReadBytes(path));
+    Check(freeLookChanged.size() == 1 && freeLookChanged[0] == "TrueFreeLook=default -> TrueFreeLook=true",
+          "saving true free look writes its value over default and changes no other byte");
     Check(ReadBytes(defaults) == defaultsBytes, "no save changes Defaults.ini");
 
     bool refused = false;
@@ -176,7 +189,32 @@ void SavesChangeOnlyTheirRows(const fs::path& dir) {
     Check(!again.config.world_space_yaw, "the saved yaw mode comes back");
     Check(HeadTracking::StartupTrackingMode(again.config) == cameraunlock::TrackingMode::PositionOnly,
           "the saved tracking mode comes back");
+    Check(again.config.true_free_look, "the saved true free look comes back");
     Check(again.config.enable_on_startup, "EnableOnStartup stays as the file had it");
+}
+
+// The retired ADS cycle's ads_mode is never read as true free look, whether an
+// older build's HeadTracking.ini is imported or a canonical file carries it.
+void AdsModeIsNotTrueFreeLook(const fs::path& dir) {
+    const fs::path legacyFolder = dir / "ads-legacy";
+    WriteBytes(legacyFolder / "HeadTracking.ini", "[Camera]\r\nads_mode=tracked\r\n");
+    const auto imported =
+        cfg::ConfigOwner<Config>(Options(legacyFolder, dir / "ads-legacy-global" / "Defaults.ini")).Load();
+    Check(imported.status == cfg::ConfigLoadStatus::Migrated,
+          std::string("a legacy file with ads_mode imports, not ") + cfg::ConfigLoadStatusName(imported.status) + ": " +
+              imported.reason);
+    Check(!imported.config.true_free_look, "a legacy ads_mode=tracked imports as sights locked");
+    Check(ReadBytes(legacyFolder / "CameraUnlock.ini").find("ads_mode") == std::string::npos,
+          "the import leaves ads_mode out of CameraUnlock.ini");
+
+    const fs::path folder = dir / "ads-canonical";
+    WriteBytes(folder / "CameraUnlock.ini", Rendered() + "\r\n[Camera]\r\nads_mode=tracked\r\n");
+    const auto loaded =
+        cfg::ConfigOwner<Config>(Options(folder, dir / "ads-canonical-global" / "Defaults.ini")).Load();
+    Check(loaded.status == cfg::ConfigLoadStatus::Canonical,
+          std::string("a canonical file with ads_mode loads, not ") + cfg::ConfigLoadStatusName(loaded.status) + ": " +
+              loaded.reason);
+    Check(!loaded.config.true_free_look, "a canonical file with ads_mode=tracked loads in sights locked");
 }
 
 // A fresh file holds default on every global row, so a Defaults.ini the player
@@ -217,6 +255,7 @@ int main(int argc, char** argv) {
     DefaultsAreTheFleetDefaults();
     SavesChangeOnlyTheirRows(dir);
     DefaultRowsFollowDefaultsIni(dir);
+    AdsModeIsNotTrueFreeLook(dir);
     fs::remove_all(dir);
 
     if (g_failures != 0) {

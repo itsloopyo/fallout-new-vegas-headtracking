@@ -31,11 +31,14 @@ cfg::ConfigTable<Config> ConfigTable() {
         .Concept<Concept::RemoteSmoothing>(&Config::remote_smoothing)
         .Concept<Concept::PositionEnabled>(&Config::position_enabled)
         .Writable()
+        .Concept<Concept::TrueFreeLook>(&Config::true_free_look)
+        .Writable()
         .Concept<Concept::CollisionEnabled>(&Config::collision_enabled)
         .Concept<Concept::CollisionReleaseSmoothing>(&Config::collision_release_smoothing)
         .Concept<Concept::ToggleKey>(&Config::toggle_key)
         .Concept<Concept::CycleTrackingModeKey>(&Config::cycle_tracking_mode_key)
         .Concept<Concept::YawModeKey>(&Config::yaw_mode_key)
+        .Concept<Concept::TrueFreeLookKey>(&Config::true_free_look_key)
         .Local("GameState", "TrackInThirdPerson", &Config::track_in_third_person, cfg::BoolCodec(),
                "true: head tracking also works in the third-person camera.")
         .Local("GameState", "TrackInVATS", &Config::track_in_vats, cfg::BoolCodec(),
@@ -140,6 +143,9 @@ cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
     // The published build fixed yaw's chord at Ctrl+Shift+J in code, which no file
     // could set; it takes the fleet's Ctrl+Shift+H, freed with the reticle toggle.
     out.yaw_mode_key = WithChord(read.yawModeKey, "YawModeKey", 'H', dropped);
+    // The build had no true free look; its [Camera] ads_mode is not carried.
+    out.true_free_look = defaults.true_free_look;
+    out.true_free_look_key = defaults.true_free_look_key;
     out.hotkey_debounce_ms = read.debounceMs;
     out.input_block_mode = ToInputBlockMode(read.inputBlockMode);
     out.track_in_third_person = read.trackInThirdPerson;
@@ -150,8 +156,9 @@ cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
 
     // A setting the player never changed from what the build wrote follows
     // Defaults.ini. The build had no setting for the start state, the tracking
-    // mode or the lean collision. v0.3.1 ran YawModeKey=0x2D (what v0.1.0 and
-    // v0.2.0 wrote on first start) as 0x2E, so both are its shipped Delete.
+    // mode, true free look or the lean collision. v0.3.1 ran YawModeKey=0x2D
+    // (what v0.1.0 and v0.2.0 wrote on first start) as 0x2E, so both are its
+    // shipped Delete.
     const legacy::Config shipped;
     cfg::LegacyFollowsDefaultsIni follows;
     follows.Setting(Concept::UdpPort, read.udpPort, shipped.udpPort);
@@ -165,6 +172,8 @@ cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
     follows.Setting(Concept::ToggleKey, read.toggleKey, shipped.toggleKey);
     follows.Setting(Concept::CycleTrackingModeKey, read.cycleTrackingModeKey, shipped.cycleTrackingModeKey);
     follows.Setting(Concept::YawModeKey, read.yawModeKey == shipped.yawModeKey || read.yawModeKey == kV020YawModeKey);
+    follows.NotInLegacy(Concept::TrueFreeLook);
+    follows.NotInLegacy(Concept::TrueFreeLookKey);
 
     if (result.status == legacy::ReadStatus::Absent) {
         return cfg::ImportResult::Absent(std::move(dropped), {}, follows.Concepts());
