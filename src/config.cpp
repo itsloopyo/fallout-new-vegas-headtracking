@@ -150,8 +150,8 @@ cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
 
     // A setting the player never changed from what the build wrote follows
     // Defaults.ini. The build had no setting for the start state, the tracking
-    // mode or the lean collision. v0.1.0 and v0.2.0 wrote YawModeKey=0x2D and
-    // later builds 0x2E, so either is a build's default, not a choice.
+    // mode or the lean collision. v0.3.1 ran YawModeKey=0x2D (what v0.1.0 and
+    // v0.2.0 wrote on first start) as 0x2E, so both are its shipped Delete.
     const legacy::Config shipped;
     cfg::LegacyFollowsDefaultsIni follows;
     follows.Setting(Concept::UdpPort, read.udpPort, shipped.udpPort);
