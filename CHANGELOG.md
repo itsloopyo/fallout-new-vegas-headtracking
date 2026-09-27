@@ -24,6 +24,9 @@
 - Hotkeys act only while the game is the window in front.
 - A `YawModeKey` of Insert (0x2D), which v0.3.1 moved to Delete, toggles the yaw mode on Insert again (e3f6d3f). The files v0.1.0 and v0.2.0 wrote on their first start name Insert.
 - A `[Camera]` section longer than 4094 bytes no longer stops head tracking from loading (e3f6d3f).
+- A setting that the defaults the README shows set to `default` is written as `default` when you never changed it from the default earlier versions used, because `HeadTracking.ini` does not hold it or holds that default. It then follows `Defaults.ini`, so it takes the value `Defaults.ini` gives it, or the built-in value where `Defaults.ini` gives none, which can differ from the default earlier versions used. A setting you changed is written with the value imported for it, or as `default` where that value equals its default at that start.
+- A `YawModeKey` of Delete (0x2E) or Insert (0x2D), the keys earlier versions wrote on their first start, is a yaw mode key you never changed, so it is written as `default` and a migrated `CameraUnlock.ini` toggles the yaw mode with Page Down / Ctrl+Shift+H through `Defaults.ini`. Any other yaw mode key is kept, with Ctrl+Shift+H beside it.
+- A hotkey set to Ctrl, Shift or Alt on its own in `HeadTracking.ini` is not carried over. That key goes down before the key of any chord made with it, so the hotkey is left unbound, and it keeps its Ctrl+Shift chord.
 
 ### Added
 

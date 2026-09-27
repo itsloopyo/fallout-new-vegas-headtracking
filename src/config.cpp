@@ -60,6 +60,9 @@ cfg::ConfigTable<Config> ConfigTable() {
 
 namespace {
 
+// Insert, the yaw mode key v0.1.0 and v0.2.0 wrote on their first start.
+constexpr int kV020YawModeKey = 0x2D;
+
 InputBlockMode ToInputBlockMode(legacy::InputBlockMode mode) {
     switch (mode) {
         case legacy::InputBlockMode::Never:
@@ -75,11 +78,14 @@ InputBlockMode ToInputBlockMode(legacy::InputBlockMode mode) {
 }
 
 // A legacy action: its code in the file, which fired while Ctrl and Shift were
-// not both held, and its fleet Ctrl+Shift letter. The frozen reader refuses a
-// code outside 0x01-0xFE, so every code here has a binding.
-std::string WithChord(int code, char letter) {
-    return cameraunlock::input::FormatKeyBindings(
-        {KeyBinding{KeyModifiers::kNone, code}, KeyBinding{KeyModifiers::kCtrl | KeyModifiers::kShift, letter}});
+// not both held, and its fleet Ctrl+Shift letter. A code no hotkey can hold, a
+// Ctrl, Shift or Alt key alone, imports as unbound (N3) and the action keeps
+// its chord.
+std::string WithChord(int code, const char* key, char letter, std::vector<cfg::DroppedValue>& dropped) {
+    std::string list = cfg::LegacyVirtualKeyToBindings(code, "Hotkeys", key, dropped);
+    const std::string chord = cameraunlock::input::FormatKeyBindings(
+        {KeyBinding{KeyModifiers::kCtrl | KeyModifiers::kShift, letter}});
+    return list.empty() ? chord : list + ", " + chord;
 }
 
 std::string CodeText(int code) {
@@ -126,14 +132,14 @@ cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
         cfg::LegacyFiniteOrDefault(read.localSmoothing, defaults.local_smoothing, "Smoothing", "LocalSmoothing", dropped);
     out.remote_smoothing = cfg::LegacyFiniteOrDefault(read.remoteSmoothing, defaults.remote_smoothing, "Smoothing",
                                                       "RemoteSmoothing", dropped);
-    out.toggle_key = WithChord(read.toggleKey, 'Y');
-    out.cycle_tracking_mode_key = WithChord(read.cycleTrackingModeKey, 'G');
+    out.toggle_key = WithChord(read.toggleKey, "Toggle", 'Y', dropped);
+    out.cycle_tracking_mode_key = WithChord(read.cycleTrackingModeKey, "CycleTrackingMode", 'G', dropped);
     if (result.status != legacy::ReadStatus::Absent && GivesReticleToggle(input.ansi_path)) {
         dropped.push_back({cfg::DropRule::Reticle, "Hotkeys", "ReticleToggle", CodeText(read.reticleToggleKey)});
     }
     // The published build fixed yaw's chord at Ctrl+Shift+J in code, which no file
     // could set; it takes the fleet's Ctrl+Shift+H, freed with the reticle toggle.
-    out.yaw_mode_key = WithChord(read.yawModeKey, 'H');
+    out.yaw_mode_key = WithChord(read.yawModeKey, "YawModeKey", 'H', dropped);
     out.hotkey_debounce_ms = read.debounceMs;
     out.input_block_mode = ToInputBlockMode(read.inputBlockMode);
     out.track_in_third_person = read.trackInThirdPerson;
@@ -142,8 +148,28 @@ cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
     // [Feedback] ShowMessages is not carried: it only gated messages to a game
     // console the build never had (g_ConsolePrint was always null).
 
-    if (result.status == legacy::ReadStatus::Absent) return cfg::ImportResult::Absent(std::move(dropped));
-    return cfg::ImportResult::Imported(std::move(dropped));
+    // A setting the player never changed from what the build wrote follows
+    // Defaults.ini. The build had no setting for the start state, the tracking
+    // mode or the lean collision. v0.1.0 and v0.2.0 wrote YawModeKey=0x2D and
+    // later builds 0x2E, so either is a build's default, not a choice.
+    const legacy::Config shipped;
+    cfg::LegacyFollowsDefaultsIni follows;
+    follows.Setting(Concept::UdpPort, read.udpPort, shipped.udpPort);
+    follows.NotInLegacy(Concept::EnableOnStartup);
+    follows.Setting(Concept::WorldSpaceYaw, read.worldSpaceYaw, shipped.worldSpaceYaw);
+    follows.TrackingMode(true);
+    follows.Setting(Concept::LocalSmoothing, read.localSmoothing, shipped.localSmoothing);
+    follows.Setting(Concept::RemoteSmoothing, read.remoteSmoothing, shipped.remoteSmoothing);
+    follows.NotInLegacy(Concept::CollisionEnabled);
+    follows.NotInLegacy(Concept::CollisionReleaseSmoothing);
+    follows.Setting(Concept::ToggleKey, read.toggleKey, shipped.toggleKey);
+    follows.Setting(Concept::CycleTrackingModeKey, read.cycleTrackingModeKey, shipped.cycleTrackingModeKey);
+    follows.Setting(Concept::YawModeKey, read.yawModeKey == shipped.yawModeKey || read.yawModeKey == kV020YawModeKey);
+
+    if (result.status == legacy::ReadStatus::Absent) {
+        return cfg::ImportResult::Absent(std::move(dropped), {}, follows.Concepts());
+    }
+    return cfg::ImportResult::Imported(std::move(dropped), {}, follows.Concepts());
 }
 
 }  // namespace

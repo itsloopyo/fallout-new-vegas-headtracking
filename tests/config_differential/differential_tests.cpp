@@ -19,8 +19,13 @@
 //
 // Comparison 2, import against migration, is the proof for the migration: no
 // difference apart from the approved drops the import records (core's
-// data/config-format.json) and the one default the conversion moves, which
-// only the no-file input shows.
+// data/config-format.json), and a row the player never changed from what a
+// build wrote, which the import leaves to Defaults.ini and the migration writes
+// `default`: it holds what `default` gives. The test derives those rows from
+// what the import read and holds follows_defaults_ini to them on every input.
+// Every file a build wrote or the repo kept and the empty file migrate to the
+// committed file byte for byte. Over a Defaults.ini that differs everywhere the
+// untouched rows take its values and a changed row keeps the player's.
 
 #include "record.h"
 
@@ -58,6 +63,7 @@ using fnv_differential::Record;
 using HeadTracking::Config;
 using HeadTracking::legacy::ReadStatus;
 namespace cfg = cameraunlock::config;
+using cfg::schema::Concept;
 
 namespace {
 
@@ -158,6 +164,11 @@ std::vector<Input> Inputs() {
     // two tokens through the migration.
     inputs.push_back({"v0.3.1 shipped, InputBlockMode=1", Replace(base, "InputBlockMode=0", "InputBlockMode=1")});
     inputs.push_back({"v0.3.1 shipped, InputBlockMode=3", Replace(base, "InputBlockMode=0", "InputBlockMode=3")});
+    // N3: a hotkey on a Ctrl, Shift or Alt key alone, which the reader kept.
+    inputs.push_back({"v0.3.1 shipped, Toggle=0x10", Replace(base, "Toggle=0x23", "Toggle=0x10")});
+    inputs.push_back({"v0.3.1 shipped, YawModeKey=0xA2", Replace(base, "YawModeKey=0x2E", "YawModeKey=0xA2")});
+    // The corpus moves the yaw key to Insert, a build's default; this changes it.
+    inputs.push_back({"v0.3.1 shipped, YawModeKey=0x79", Replace(base, "YawModeKey=0x2E", "YawModeKey=0x79")});
     std::string padded = base;
     for (int i = 0; i < 64; ++i) padded += "Padding" + std::to_string(i) + "=" + std::string(64, 'x') + "\n";
     inputs.push_back({"v0.3.1 shipped, [Camera] past 4094 bytes", padded});
@@ -392,6 +403,77 @@ bool IsNaN(const std::string& bits) {
     return std::isnan(number);
 }
 
+// ---- Rows that follow Defaults.ini ---------------------------------------------------
+
+// The row a record entry observes, or none for an entry no global row holds.
+// startup.mode stands for the tracking mode pair.
+std::optional<Concept> RowOf(const std::string& entry) {
+    static const std::map<std::string, Concept> rows = {
+        {"field.udpPort", Concept::UdpPort},
+        {"field.localSmoothing", Concept::LocalSmoothing},
+        {"field.remoteSmoothing", Concept::RemoteSmoothing},
+        {"field.worldSpaceYaw", Concept::WorldSpaceYaw},
+        {"startup.worldSpaceYaw", Concept::WorldSpaceYaw},
+        {"startup.enabled", Concept::EnableOnStartup},
+        {"startup.mode", Concept::RotationEnabled},
+        {"startup.leanCollision", Concept::CollisionEnabled},
+        {"startup.leanReleaseSmoothing", Concept::CollisionReleaseSmoothing},
+        {"hotkey.Toggle", Concept::ToggleKey},
+        {"hotkey.CycleTrackingMode", Concept::CycleTrackingModeKey},
+        {"hotkey.YawMode", Concept::YawModeKey},
+    };
+    const auto it = rows.find(entry);
+    return it == rows.end() ? std::nullopt : std::optional<Concept>(it->second);
+}
+
+const std::set<Concept>& AllRows() {
+    static const std::set<Concept> all = {
+        Concept::UdpPort,         Concept::EnableOnStartup,  Concept::WorldSpaceYaw,
+        Concept::RotationEnabled, Concept::PositionEnabled,  Concept::LocalSmoothing,
+        Concept::RemoteSmoothing, Concept::CollisionEnabled, Concept::CollisionReleaseSmoothing,
+        Concept::ToggleKey,       Concept::CycleTrackingModeKey, Concept::YawModeKey,
+    };
+    return all;
+}
+
+// The rows the player never changed: each field the file sets reads as a build
+// wrote it. The builds wrote Insert (v0.1.0, v0.2.0) or Delete as the yaw key.
+std::set<Concept> UntouchedRows(const Record& import, const Record& noFile) {
+    std::set<Concept> untouched = AllRows();
+    for (const char* entry : {"field.udpPort", "field.localSmoothing", "field.remoteSmoothing", "field.worldSpaceYaw"}) {
+        if (import.at(entry) != noFile.at(entry)) untouched.erase(*RowOf(entry));
+    }
+    if (import.at("field.toggleKey") != noFile.at("field.toggleKey")) untouched.erase(Concept::ToggleKey);
+    if (import.at("field.cycleTrackingModeKey") != noFile.at("field.cycleTrackingModeKey")) {
+        untouched.erase(Concept::CycleTrackingModeKey);
+    }
+    const std::string yaw = import.at("field.yawModeKey");
+    if (yaw != Hex(VK_DELETE) && yaw != Hex(VK_INSERT)) untouched.erase(Concept::YawModeKey);
+    return untouched;
+}
+
+std::string Names(const std::set<Concept>& rows) {
+    std::string text;
+    for (const Concept row : rows) {
+        text += (text.empty() ? "" : ", ") + std::string(cfg::schema::kConcepts[static_cast<std::size_t>(row)].name);
+    }
+    return text.empty() ? "none" : text;
+}
+
+std::set<Concept> Follows(const cfg::ImportResult& result) {
+    return std::set<Concept>(result.follows_defaults_ini.begin(), result.follows_defaults_ini.end());
+}
+
+// A migration record with each row the import left to Defaults.ini holding
+// what `defaults`, the record of a Defaults.ini, gives it.
+Record OverDefaults(Record record, const std::set<Concept>& follows, const Record& defaults) {
+    for (auto& [entry, value] : record) {
+        const std::optional<Concept> row = RowOf(entry);
+        if (row && follows.count(*row)) value = defaults.at(entry);
+    }
+    return record;
+}
+
 // Comparison 2 for one input: empty when every difference between the import
 // and the migration is one core's data/config-format.json approves, and the
 // import recorded it; otherwise what is left.
@@ -411,10 +493,15 @@ std::vector<std::string> UnexplainedMigrationDifferences(const std::string& inpu
     for (const auto& entry : import) names.insert(entry.first);
     for (const auto& entry : migration) names.insert(entry.first);
     const Config defaults;
+    const Record builtin = ConfigRecord(defaults);
+    const std::set<Concept> follows = Follows(result);
     for (const std::string& name : names) {
         const auto i = import.find(name);
         const auto m = migration.find(name);
         if (i != import.end() && m != migration.end() && i->second == m->second) continue;
+        // A row the player never changed holds what `default` gives.
+        const std::optional<Concept> row = RowOf(name);
+        if (row && follows.count(*row) && m != migration.end() && m->second == builtin.at(name)) continue;
         // The raw codes are compared as the bindings they register (hotkey.*).
         if (name == "field.toggleKey" || name == "field.cycleTrackingModeKey" || name == "field.yawModeKey" ||
             name == "field.reticleToggleKey") {
@@ -441,15 +528,26 @@ std::vector<std::string> UnexplainedMigrationDifferences(const std::string& inpu
         }
         // The yaw chord was Ctrl+Shift+J fixed in code, never a value a file held,
         // and moves to the fleet's Ctrl+Shift+H. The key the file named stays.
-        if (name == "hotkey.YawMode" && input != "no file" &&
+        if (name == "hotkey.YawMode" &&
             m->second == Bindings({{0, std::stoi(import.at("field.yawModeKey"), nullptr, 16)}, {kCtrlShift, 'H'}})) {
             continue;
         }
-        // The no-file case of the yaw key's moved default: a new file holds the
-        // fleet's PageDown / Ctrl+Shift+H where v0.3.1 defaulted to Delete.
-        if (name == "hotkey.YawMode" && input == "no file" && m->second == ListBindings(defaults.yaw_mode_key)) {
-            continue;
+        // Normalisation N3: a key on a Ctrl, Shift or Alt key alone is unbound,
+        // and the action keeps its chord.
+        const struct {
+            const char* entry;
+            const char* key;
+            char letter;
+        } modifierKeys[] = {{"hotkey.Toggle", "Toggle", 'Y'},
+                            {"hotkey.CycleTrackingMode", "CycleTrackingMode", 'G'},
+                            {"hotkey.YawMode", "YawModeKey", 'H'}};
+        bool unbound = false;
+        for (const auto& k : modifierKeys) {
+            unbound = unbound || (name == k.entry && m != migration.end() &&
+                                  m->second == Bindings({{kCtrlShift, k.letter}}) &&
+                                  Dropped(result, cfg::DropRule::ModifierKey, "Hotkeys", k.key));
         }
+        if (unbound) continue;
         left.push_back(name + ": " + (i == import.end() ? "(none)" : i->second) + " -> " +
                        (m == migration.end() ? "(none)" : m->second));
     }
@@ -588,6 +686,24 @@ const char* const kSkewedDefaults =
     "[Position]\r\nPositionEnabled=true\r\nCollisionEnabled=false\r\nCollisionReleaseSmoothing=0.5\r\n\r\n"
     "[Hotkeys]\r\nToggleKey=F8\r\nCycleTrackingModeKey=F9\r\nYawModeKey=F10\r\n";
 
+// What kSkewedDefaults gives each global row.
+Record SkewedRecord() {
+    Config c;
+    c.udp_port = 5252;
+    c.enable_on_startup = false;
+    c.world_space_yaw = false;
+    c.rotation_enabled = false;
+    c.position_enabled = true;
+    c.local_smoothing = 0.5;
+    c.remote_smoothing = 0.5;
+    c.collision_enabled = false;
+    c.collision_release_smoothing = 0.5f;
+    c.toggle_key = "F8";
+    c.cycle_tracking_mode_key = "F9";
+    c.yaw_mode_key = "F10";
+    return ConfigRecord(c);
+}
+
 fs::path MigratedFolder() {
     std::vector<wchar_t> exe(MAX_PATH);
     const DWORD length = GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size()));
@@ -672,6 +788,18 @@ int main(int argc, char** argv) {
     std::size_t migrated = 0;
     std::set<std::string> migratedFiles;
     std::set<std::string> blockModesMigrated;
+    std::set<Concept> rowsTouched;
+    const Record skewedRecord = SkewedRecord();
+    {
+        std::set<Concept> differs;
+        for (const auto& [entry, value] : ConfigRecord(Config{})) {
+            const std::optional<Concept> row = RowOf(entry);
+            if (row && skewedRecord.at(entry) != value) differs.insert(*row);
+        }
+        if (differs.count(Concept::RotationEnabled)) differs.insert(Concept::PositionEnabled);
+        Check(differs == AllRows(), "the skewed Defaults.ini differs from the built-in values on every row");
+    }
+    const Record noFileImport = ImportRecord(root / "no-such-folder" / "HeadTracking.ini");
     for (std::size_t i = 0; i < inputs.size(); ++i) {
         const Input& input = inputs[i];
         const fs::path dir = root / std::to_string(i);
@@ -689,6 +817,20 @@ int main(int argc, char** argv) {
         Config mapped;
         const cfg::ImportResult result = HeadTracking::ConfigLegacyImport().run(InputFor(readOnly / "HeadTracking.ini"), mapped);
         Check(Listing(readOnly) == before, input.name + ": the import writes nothing");
+        const std::set<Concept> follows = Follows(result);
+        if (result.status != cfg::ImportStatus::Refused) {
+            Check(follows.size() == result.follows_defaults_ini.size(), input.name + ": follows_defaults_ini names each row once");
+            const std::set<Concept> untouched = UntouchedRows(import, noFileImport);
+            if (follows != untouched) {
+                std::printf("  %s: follows Defaults.ini %s, untouched %s\n", input.name.c_str(), Names(follows).c_str(),
+                            Names(untouched).c_str());
+            }
+            Check(follows == untouched,
+                  input.name + ": the rows left to Defaults.ini are exactly the ones the player never changed");
+            for (const Concept row : AllRows()) {
+                if (!untouched.count(row)) rowsTouched.insert(row);
+            }
+        }
         if (input.bytes) SetFileAttributesW((readOnly / "HeadTracking.ini").c_str(), FILE_ATTRIBUTE_NORMAL);
 
         fs::create_directories(dir / "migrate");
@@ -715,34 +857,59 @@ int main(int argc, char** argv) {
               input.name + ": a read-only legacy file migrates as a writable one does");
         if (input.bytes) SetFileAttributesW((readOnlyMigrate / "HeadTracking.ini").c_str(), FILE_ATTRIBUTE_NORMAL);
 
-        // With no legacy file the settings are Defaults.ini's own, so only an
-        // input with a file is held to the import there.
+        // Over a Defaults.ini that differs everywhere a row the player never
+        // changed is `default` and takes its value, and a changed row keeps the
+        // player's. With no legacy file every row is Defaults.ini's own.
         if (input.bytes) {
             const fs::path skewed = dir / "migrate-skewed";
             WriteBytes(skewed / "HeadTracking.ini", *input.bytes);
             WriteBytes(dir / "skewed" / "Defaults.ini", kSkewedDefaults);
-            Check(Migrate(input, skewed, dir / "skewed" / "Defaults.ini", result, migratedFiles) == migration,
-                  input.name + ": the migration gives the same settings over a Defaults.ini that differs everywhere");
+            const Record overSkewed = Migrate(input, skewed, dir / "skewed" / "Defaults.ini", result, migratedFiles);
+            const Record want =
+                migration.at("status") == "usable" ? OverDefaults(migration, follows, skewedRecord) : migration;
+            if (overSkewed != want) {
+                std::printf("  %s (skewed Defaults.ini):\n  want:%s\n  got:%s\n", input.name.c_str(),
+                            Describe(want).c_str(), Describe(overSkewed).c_str());
+            }
+            Check(overSkewed == want, input.name + ": over a Defaults.ini that differs everywhere, the untouched rows "
+                                                   "take its values and the changed rows keep the player's");
+            if (migration.at("status") == "usable") {
+                const std::string file = ReadBytes(skewed / "CameraUnlock.ini");
+                for (const Concept row : follows) {
+                    const std::string key = cfg::schema::kConcepts[static_cast<std::size_t>(row)].key;
+                    Check(file.find("\r\n" + key + "=default\r\n") != std::string::npos,
+                          input.name + " (skewed Defaults.ini): " + key + " is written default");
+                }
+            }
         }
     }
     std::printf("Comparison 2 (the frozen reader against the migration): %zu inputs migrated\n", migrated);
     Check(blockModesMigrated == std::set<std::string>{"0", "1", "2", "3"},
           "every InputBlockMode a player can hold is migrated by some input");
+    std::printf("rows some input changes from a build's default: %s\n", Names(rowsTouched).c_str());
+    Check(rowsTouched == std::set<Concept>{Concept::UdpPort, Concept::WorldSpaceYaw, Concept::LocalSmoothing,
+                                           Concept::RemoteSmoothing, Concept::ToggleKey, Concept::CycleTrackingModeKey,
+                                           Concept::YawModeKey},
+          "the inputs change every row the legacy file can set, which then do not follow Defaults.ini");
 
-    // A player who installed the newest published build and changed nothing
-    // gets the committed file, apart from the Delete yaw key the build shipped
-    // in the file, which the conversion keeps.
+    // A player who installed any build and changed nothing gets the committed
+    // file, `default` on every row. The predecessor's files set InputBlockMode,
+    // a row of this game's own, so they are held to every global row following
+    // Defaults.ini above and not to these bytes.
     const std::string committed = ReadBytes(fs::path(FNV_SOURCE_DIR) / "config" / "HeadTracking.ini");
     Check(committed == RenderedDefaults(), "config/HeadTracking.ini is what the table renders");
-    const std::string expectedUpgrade =
-        Replace(committed, "YawModeKey=default\r\n", "YawModeKey=Delete, Ctrl+Shift+H\r\n");
-    for (const char* file : {"v0.3.1/shipped.ini", "v0.3.1/seed.ini", "v0.3.1/first-run.ini"}) {
-        const fs::path dir = root / "upgrade" / fs::path(file).stem();
-        WriteBytes(dir / "HeadTracking.ini", ReadBytes(kData / file));
+    std::vector<std::string> unedited = {""};
+    for (const char* file : kDataFiles) {
+        if (std::string(file).rfind("predecessor/", 0) != 0) unedited.push_back(file);
+    }
+    for (std::size_t n = 0; n < unedited.size(); ++n) {
+        const std::string& file = unedited[n];
+        const std::string label = file.empty() ? std::string("the empty file") : file;
+        const fs::path dir = root / "upgrade" / std::to_string(n);
+        WriteBytes(dir / "HeadTracking.ini", file.empty() ? std::string() : ReadBytes(kData / file));
         cfg::ConfigOwner<Config> owner(Options(dir, root / "upgrade-global" / "Defaults.ini"));
-        Check(owner.Load().status == cfg::ConfigLoadStatus::Migrated, std::string(file) + " migrates");
-        Check(ReadBytes(dir / "CameraUnlock.ini") == expectedUpgrade,
-              std::string(file) + " migrates to the committed file with the Delete yaw key it shipped");
+        Check(owner.Load().status == cfg::ConfigLoadStatus::Migrated, label + " migrates");
+        Check(ReadBytes(dir / "CameraUnlock.ini") == committed, label + " migrates to the committed file, byte for byte");
     }
 
     // Core's canonical config lint runs over these next (lint-migrated.mjs).
