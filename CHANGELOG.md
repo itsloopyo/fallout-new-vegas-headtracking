@@ -15,11 +15,10 @@
   sights come up, a lean to the side or up and down moves from the view to the
   first-person arms and weapon, so the sights stay in front of your eye and your
   rounds leave from where your eye is. It moves back to the view as the sights
-  come down. Leaning toward or away from the sights stays on the view, so
-  leaning in brings the sights closer to your eye. The lean is stopped at walls
-  before it is shared out, so the muzzle stops where your eye does. In third
-  person the view keeps the whole lean while you aim, including when you switch
-  out of first person with the sights up.
+  come down. Leaning toward or away from the sights stays on the view. The lean
+  is stopped at walls before it is shared out, so the muzzle stops where your
+  eye does. In third person the view keeps the whole lean while you aim,
+  including when you switch out of first person with the sights up.
 - Settings move to `CameraUnlock.ini` in the game folder, beside `FalloutNV.exe`. Earlier versions of the mod kept these settings in `HeadTracking.ini`, in the same folder. The first time this version starts and finds no `CameraUnlock.ini`, it reads your settings from `HeadTracking.ini` and writes them into `CameraUnlock.ini`. It never changes `HeadTracking.ini`, and does not read it again while `CameraUnlock.ini` exists.
 - A setting that the defaults the README shows set to `default` is written as `default` when you never changed it from the default earlier versions used, because `HeadTracking.ini` does not hold it or holds that default. It then follows `Defaults.ini`, so it takes the value `Defaults.ini` gives it, or the built-in value where `Defaults.ini` gives none, which can differ from the default earlier versions used. A setting you changed is written with the value imported for it, or as `default` where that value equals its default at that start.
 - `RotationEnabled` and `PositionEnabled` are one setting here, the tracking mode, so both are written as `default` or neither is.
