@@ -182,7 +182,9 @@ static void ApplyCameraPositionOffset(float* camPos, float posX, float posY, flo
         D3D9Hook::SignalFatalError("camera collision query");
         return;
     }
-    const Vec3 offset = g_rigLean.Split(lean, IsPlayerAiming(), controller.IsTrueFreeLook(), IsFirstPerson(), now);
+    const Vec3 aimForward = Vec3{m[0], m[3], m[6]}.Normalized();
+    const Vec3 offset =
+        g_rigLean.Split(lean, aimForward, IsPlayerAiming(), controller.IsTrueFreeLook(), IsFirstPerson(), now);
     camPos[0] += offset.x;
     camPos[1] += offset.y;
     camPos[2] += offset.z;

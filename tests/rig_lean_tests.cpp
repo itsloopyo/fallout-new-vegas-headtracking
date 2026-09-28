@@ -30,13 +30,16 @@ static bool Near(const Vec3& a, const Vec3& b) {
 
 static bool IsZero(const Vec3& v) { return v.x == 0.0f && v.y == 0.0f && v.z == 0.0f; }
 
-// A lean given in a view pitched 30 degrees down and yawed, in world axes.
+// A view pitched 30 degrees down and yawed, in world axes.
+static const float kPitch = -0.5236f, kYaw = 0.9f;
+static const Vec3 kForward{std::cos(kPitch) * std::sin(kYaw), std::cos(kPitch) * std::cos(kYaw), std::sin(kPitch)};
+
+// A lean given in that view, in world axes.
 static Vec3 PitchedLean(float right, float up, float forward) {
-    const float pitch = -0.5236f, yaw = 0.9f;
-    const Vec3 f{std::cos(pitch) * std::sin(yaw), std::cos(pitch) * std::cos(yaw), std::sin(pitch)};
-    const Vec3 r{std::cos(yaw), -std::sin(yaw), 0.0f};
-    const Vec3 u{r.y * f.z - r.z * f.y, r.z * f.x - r.x * f.z, r.x * f.y - r.y * f.x};
-    return r * right + u * up + f * forward;
+    const Vec3 r{std::cos(kYaw), -std::sin(kYaw), 0.0f};
+    const Vec3 u{r.y * kForward.z - r.z * kForward.y, r.z * kForward.x - r.x * kForward.z,
+                 r.x * kForward.y - r.y * kForward.x};
+    return r * right + u * up + kForward * forward;
 }
 
 struct Frame {
@@ -54,7 +57,7 @@ struct Game {
         Frame f;
         f.rig = rig.TakeRig();
         const Vec3 cameraEye = clean + f.rig;
-        f.camera = rig.Split(lean, aiming, trueFreeLook, firstPerson, now);
+        f.camera = rig.Split(lean, kForward, aiming, trueFreeLook, firstPerson, now);
         f.eye = cameraEye + f.camera;
         rig.EndFrame();
         now += 16;
@@ -72,13 +75,25 @@ static void HipKeepsTheLeanOnTheCamera() {
     }
 }
 
-static void SightsUpPutTheLeanOnTheRig() {
+static void SightsUpPutTheLeanAcrossTheAimOnTheRig() {
     Game g;
     const Vec3 lean = PitchedLean(15.4f, 3.0f, -2.0f);
     for (int i = 0; i < 40; ++i) g.Step(lean, true);
     const Frame f = g.Step(lean, true);
-    Check(Near(f.rig, lean), "with the sights up the rig carries the whole lean");
-    Check(Near(f.camera, Vec3()), "with the sights up the camera share handed to the aim and reticle is zero");
+    Check(Near(f.rig, PitchedLean(15.4f, 3.0f, 0.0f)), "with the sights up the rig carries the lean across the aim");
+    Check(Near(f.camera, PitchedLean(0.0f, 0.0f, -2.0f)),
+          "with the sights up the camera keeps only the lean along the aim, which keeps the eye on the sights");
+    Check(Near(f.eye, g.clean + lean), "the eye still takes the whole lean");
+}
+
+static void LeaningInWhileAimingStaysOnTheCamera() {
+    Game g;
+    const Vec3 lean = PitchedLean(0.0f, 0.0f, 12.0f);
+    for (int i = 0; i < 40; ++i) {
+        const Frame f = g.Step(lean, true);
+        Check(Near(f.rig, Vec3()), "a lean along the aim never moves the rig");
+        Check(Near(f.camera, lean), "a lean along the aim moves the eye toward the sights");
+    }
 }
 
 static void EveryCarrierPutsTheEyeInTheSamePlace() {
@@ -90,7 +105,8 @@ static void EveryCarrierPutsTheEyeInTheSamePlace() {
         const bool aiming = (i / 9) % 2 == 1;
         const Frame f = g.Step(lean, aiming);
         Check(Near(f.eye, g.clean + lean), "the eye is the clean eye plus the lean whichever carrier holds it");
-        sawSplit = sawSplit || (!IsZero(f.rig) && !Near(f.camera, Vec3()) && !Near(f.rig, lean));
+        const Vec3 across = lean - kForward * Vec3::Dot(lean, kForward);
+        sawSplit = sawSplit || (!IsZero(f.rig) && !Near(f.rig, across));
     }
     Check(sawSplit, "the walk covered frames with the lean split between both carriers");
 }
@@ -158,13 +174,15 @@ static void TheClampHoldsTheSameStandoffWhicheverCarrier() {
         settings.skin = 5.0f;
         clamp.SetSettings(settings);
         const Vec3 desired{40.0f, 0.0f, 0.0f};
+        // The view looks along +y, so the lean toward the wall is all across the aim.
+        const Vec3 aimForward{0.0f, 1.0f, 0.0f};
         Frame f;
         for (int i = 0; i < 40; ++i) {
             f.rig = g.rig.TakeRig();
             const Vec3 cameraEye = g.clean + f.rig;
             // As the culling hook does: clamp from the camera's eye minus the rig's share.
             const Vec3 lean = clamp.Apply(cameraEye - g.rig.Applied(), desired, 0.016f, &Wall, &wallX);
-            f.camera = g.rig.Split(lean, aiming, false, true, g.now);
+            f.camera = g.rig.Split(lean, aimForward, aiming, false, true, g.now);
             f.eye = cameraEye + f.camera;
             g.rig.EndFrame();
             g.now += 16;
@@ -176,7 +194,8 @@ static void TheClampHoldsTheSameStandoffWhicheverCarrier() {
 
 int main() {
     HipKeepsTheLeanOnTheCamera();
-    SightsUpPutTheLeanOnTheRig();
+    SightsUpPutTheLeanAcrossTheAimOnTheRig();
+    LeaningInWhileAimingStaysOnTheCamera();
     EveryCarrierPutsTheEyeInTheSamePlace();
     EveryStopReleasesTheRig();
     TrueFreeLookAndThirdPersonKeepTheLeanOnTheCamera();

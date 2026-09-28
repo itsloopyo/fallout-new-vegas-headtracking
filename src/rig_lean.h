@@ -28,11 +28,13 @@ public:
     const Vec3& Applied() const { return m_applied; }
 
     // At the camera, with the whole lean already clamped from the clean eye
-    // (the camera's eye minus Applied()). Returns the offset to add to the
-    // camera's eye: the camera's share of the lean, the only share that opens
-    // a gap between the eye and the round.
-    Vec3 Split(const Vec3& lean, bool aiming, bool trueFreeLook, bool rigAvailable, unsigned long long nowMs) {
-        m_next = m_handover.Update(lean, aiming, trueFreeLook, rigAvailable, nowMs).rig;
+    // (the camera's eye minus Applied()) and the clean camera's unit forward
+    // axis, both in world axes. Returns the offset to add to the camera's eye:
+    // the camera's share of the lean, the only share that opens a gap between
+    // the eye and the round. Only the lean across the aim goes to the rig.
+    Vec3 Split(const Vec3& lean, const Vec3& aimForward, bool aiming, bool trueFreeLook, bool rigAvailable,
+               unsigned long long nowMs) {
+        m_next = m_handover.Update(lean, aimForward, aiming, trueFreeLook, rigAvailable, nowMs).rig;
         return lean - m_applied;
     }
 
