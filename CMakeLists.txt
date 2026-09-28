@@ -59,6 +59,7 @@ add_test(NAME fnv_config_lint COMMAND node
     ${CMAKE_SOURCE_DIR}/tests/config_differential/lint-migrated.mjs
     $<TARGET_FILE_DIR:fnv_config_differential>/migrated)
 set_tests_properties(fnv_config_lint PROPERTIES DEPENDS fnv_config_differential)
+set_tests_properties(fnv_config_differential fnv_config_lint PROPERTIES LABELS differential)
 
 # The committed config against the table, and the saves. `fnv_config_tests
 # --render-config <path>` is what pixi run render-config writes the file with.

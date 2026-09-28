@@ -160,6 +160,18 @@ if ($existingTag) {
     exit 1
 }
 
+Write-Host "Running the full test suite..." -ForegroundColor Cyan
+Push-Location $projectDir
+try {
+    pixi run test
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Error: pixi run test failed. Nothing was changed." -ForegroundColor Red
+        exit 1
+    }
+} finally {
+    Pop-Location
+}
+
 Write-Host "Current version: $currentVersion" -ForegroundColor Gray
 Write-Host "New version:     $Version" -ForegroundColor Green
 Write-Host ""
