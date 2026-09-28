@@ -62,6 +62,11 @@ void DrawAimCrosshair(IDirect3DDevice9* device, const D3DVIEWPORT9& vp);
 bool InstallCullingHook();
 bool InstallWeaponViewHook();
 bool InstallSkyViewHook();
+bool InstallRigHook();
+
+// True while the player is in the first-person camera, where the rig carries
+// the lean.
+bool IsFirstPerson();
 
 // Apply rotation to a 3x3 matrix with baseline tracking.
 // worldSpaceYaw selects horizon-locked (true) vs camera-local (false) yaw.

@@ -70,6 +70,11 @@ target_compile_definitions(fnv_config_tests PRIVATE FNV_SOURCE_DIR="${CMAKE_SOUR
 target_link_libraries(fnv_config_tests cameraunlock)
 add_test(NAME fnv_config COMMAND fnv_config_tests)
 
+add_executable(fnv_rig_lean_tests tests/rig_lean_tests.cpp)
+target_include_directories(fnv_rig_lean_tests PRIVATE src)
+target_link_libraries(fnv_rig_lean_tests cameraunlock)
+add_test(NAME fnv_rig_lean COMMAND fnv_rig_lean_tests)
+
 # Source files
 set(SOURCES
     src/main.cpp
@@ -90,6 +95,7 @@ set(SOURCES
     src/world_query.cpp
     src/weapon_view.cpp
     src/sky_view.cpp
+    src/rig_view.cpp
     src/window_centering.cpp
 )
 
@@ -110,6 +116,7 @@ set(HEADERS
     src/d3d9_hook.h
     src/d3d9_internal.h
     src/weapon_view.h
+    src/rig_lean.h
     src/startup.h
     src/debug_log.h
     src/window_centering.h

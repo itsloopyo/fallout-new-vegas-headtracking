@@ -101,19 +101,21 @@ bool WaitForGameStartup(const HeadTracking::BuildProfile& profile, DWORD timeout
             HeadTracking::IsCodeExecutable(profile.renderAccumulator) &&
             HeadTracking::IsCodeExecutable(profile.setupSkyGeometry) &&
             HeadTracking::IsCodeExecutable(profile.setCameraFov) &&
-            HeadTracking::IsCodeExecutable(profile.updateCameraProjection)) {
+            HeadTracking::IsCodeExecutable(profile.updateCameraProjection) &&
+            HeadTracking::IsCodeExecutable(profile.updateFirstPerson)) {
             culog::Line("Startup ready: process=%lu window=%p camera code executable",
                         GetCurrentProcessId(), wnd);
             return true;
         }
         if (GetTickCount64() >= deadline) {
-            culog::Line("ERROR: startup timed out: process=%lu window=%p cullingExecutable=%d weaponExecutable=%d skyExecutable=%d fovExecutable=%d projectionExecutable=%d",
+            culog::Line("ERROR: startup timed out: process=%lu window=%p cullingExecutable=%d weaponExecutable=%d skyExecutable=%d fovExecutable=%d projectionExecutable=%d firstPersonExecutable=%d",
                         GetCurrentProcessId(), wnd,
                         HeadTracking::IsCodeExecutable(profile.calcCullingPlanes),
                         HeadTracking::IsCodeExecutable(profile.renderAccumulator),
                         HeadTracking::IsCodeExecutable(profile.setupSkyGeometry),
                         HeadTracking::IsCodeExecutable(profile.setCameraFov),
-                        HeadTracking::IsCodeExecutable(profile.updateCameraProjection));
+                        HeadTracking::IsCodeExecutable(profile.updateCameraProjection),
+                        HeadTracking::IsCodeExecutable(profile.updateFirstPerson));
             return false;
         }
         Sleep(250);

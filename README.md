@@ -144,6 +144,9 @@ it is on when the game starts is `EnableOnStartup`.
 `Ctrl+Shift+J` no longer toggles yaw mode. The keys above are the built-in
 defaults a `CameraUnlock.ini` takes through `Defaults.ini`.
 
+Ctrl is the game's sneak key, so pressing a `Ctrl+Shift` chord also toggles
+sneaking.
+
 The gold hip-fire reticle marks your mouse/controller aim as you move your head.
 The game's own sights take over while you aim, so the reticle is hidden then.
 
@@ -153,6 +156,11 @@ Head tracking stays on while you aim. The weapon stays where your mouse or
 controller points it, so with your head turned it sits off to one side with its
 sights still lined up, and your rounds land where those sights point. Head
 movement is scaled to the zoom, so a scope does not magnify it.
+
+Leaning carries on through the aim. As the sights come up, your arms and weapon
+move with your head, so the sights stay in front of your eye, and your rounds
+leave from where your eye is. Lean round a corner with the sights up and you can
+hit what you can see from there.
 
 By default leaning never takes your eye off the sights. `Insert` /
 `Ctrl+Shift+U` switches to **true free look**: the weapon stays put and your
@@ -170,7 +178,9 @@ running, except `[Network] UdpPort`, which requires a game restart.
 `LocalSmoothing` and `RemoteSmoothing` under `[Smoothing]` select smoothing by
 connection source. Both cover rotation and position; zero disables smoothing.
 Configure sensitivity, deadzones, inversion and centring in your tracker.
-Head tracking changes the rendered view without writing player aim.
+Head tracking changes the rendered view without writing player aim. While you
+aim down sights, leaning moves your shots with your eye (see Aiming down
+sights).
 Positional leaning is limited by the game's world collision to keep the camera
 away from walls. `[Position] CollisionEnabled=false` turns that off.
 

@@ -8,6 +8,7 @@
 #include "debug_log.h"
 #include "world_query.h"
 #include "weapon_view.h"
+#include "rig_lean.h"
 #include <cameraunlock/camera/lean_clamp.h>
 
 #include <cameraunlock/math/angle_utils.h>
@@ -172,12 +173,16 @@ static void ApplyCameraPositionOffset(float* camPos, float posX, float posY, flo
     const ULONGLONG now = GetTickCount64();
     const float dt = static_cast<float>(now - previous) * 0.001f;
     previous = now;
-    const Vec3 offset = s_leanClamp.Apply({camPos[0], camPos[1], camPos[2]}, desired, dt,
-                                          collision ? &QueryLean : nullptr, nullptr);
+    // The camera's eye already carries the rig's share; the clamp runs once on
+    // the whole lean from the clean eye, before the split.
+    const Vec3 applied = g_rigLean.Applied();
+    const Vec3 lean = s_leanClamp.Apply({camPos[0] - applied.x, camPos[1] - applied.y, camPos[2] - applied.z},
+                                        desired, dt, collision ? &QueryLean : nullptr, nullptr);
     if (s_leanClamp.LastQueryFailed()) {
         D3D9Hook::SignalFatalError("camera collision query");
         return;
     }
+    const Vec3 offset = g_rigLean.Split(lean, IsPlayerAiming(), controller.IsTrueFreeLook(), IsFirstPerson(), now);
     camPos[0] += offset.x;
     camPos[1] += offset.y;
     camPos[2] += offset.z;
@@ -224,7 +229,10 @@ bool ApplyRotationWithBaseline(float* camMatrix, double yawDeg, double pitchDeg,
     return engineRefreshed;
 }
 
-void ResetLeanClamp() { s_leanClamp.Reset(); }
+void ResetLeanClamp() {
+    s_leanClamp.Reset();
+    g_rigLean.Stop();
+}
 
 bool GetCameraPositionOffset(const void* camera, float offset[3]) {
     if (!camera || reinterpret_cast<const uint8_t*>(camera) + 0x8C !=
@@ -236,6 +244,7 @@ bool GetCameraPositionOffset(const void* camera, float offset[3]) {
 
 void RestoreCamera() {
     g_weaponView.valid = false;
+    g_rigLean.EndFrame();
     bool restored = false;
     if (MatrixStillHasOurRotation(s_lastModifiedMatrix)) {
         memcpy(s_lastModifiedMatrix, s_matrixBeforeRotation, sizeof(s_matrixBeforeRotation));
@@ -331,8 +340,9 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
             lastProbe = now;
             auto* player = *reinterpret_cast<uint8_t**>(ActiveProfile().playerBase);
             cameraunlock::logging::Line(
-                "Camera: aiming=%d head=(%.2f,%.2f,%.2f) render=(%.2f,%.2f,%.2f) zoom=%.4f aim=(%.6f,%.6f)",
+                "Camera: aiming=%d head=(%.2f,%.2f,%.2f) render=(%.2f,%.2f,%.2f) zoom=%.4f rig=(%.2f,%.2f,%.2f) aim=(%.6f,%.6f)",
                 IsPlayerAiming(), headYaw, headPitch, rollDeg, yawDeg, pitchDeg, rollDeg, zoom,
+                g_rigLean.Applied().x, g_rigLean.Applied().y, g_rigLean.Applied().z,
                 *reinterpret_cast<float*>(player + 0x2C), *reinterpret_cast<float*>(player + 0x24));
         }
 
@@ -350,7 +360,9 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
         float posY = controller->GetPositionY() * zoom;   // meters, up
         float posZ = controller->GetPositionZ() * zoom;   // meters, forward
 
-        if (posX != 0.0f || posY != 0.0f || posZ != 0.0f || s_hasPositionState) {
+        const auto rig = g_rigLean.Applied();
+        if (posX != 0.0f || posY != 0.0f || posZ != 0.0f || s_hasPositionState ||
+            rig.x != 0.0f || rig.y != 0.0f || rig.z != 0.0f) {
             float* camPos = reinterpret_cast<float*>(
                 static_cast<uint8_t*>(worldTransform) + GameOffsets::kWorldTransformToPosition);
             ApplyCameraPositionOffset(camPos,

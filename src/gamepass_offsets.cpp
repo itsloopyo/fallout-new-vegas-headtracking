@@ -24,7 +24,8 @@ extern const BuildProfile kGamePassProfile_20160121 = {
     0x011F5F50,
     0x011F6360,
     0x00C508B0,
-    0x00A700F0
+    0x00A700F0,
+    0x00951770
 };
 
 }

@@ -24,6 +24,7 @@ struct BuildProfile {
     uintptr_t currentAccumulator;
     uintptr_t setCameraFov;
     uintptr_t updateCameraProjection;
+    uintptr_t updateFirstPerson;
 };
 const BuildProfile* ResolveRunningBuild();
 const BuildProfile& ActiveProfile();

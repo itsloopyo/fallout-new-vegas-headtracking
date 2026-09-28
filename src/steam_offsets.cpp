@@ -24,7 +24,8 @@ extern const BuildProfile kSteamProfile_20110701 = {
     0x011F91E0,
     0x011F95F0,
     0x00C52020,
-    0x00A70BA0
+    0x00A70BA0,
+    0x00952290
 };
 
 }

@@ -261,7 +261,7 @@ bool D3D9Hook::Initialize() {
     if (created) {
         created = D3D9Internal::CreateHook(presentAddr, reinterpret_cast<void*>(&HookedPresent), &s_originalPresent) &&
                   D3D9Internal::InstallCullingHook() && D3D9Internal::InstallWeaponViewHook() &&
-                  D3D9Internal::InstallSkyViewHook();
+                  D3D9Internal::InstallSkyViewHook() && D3D9Internal::InstallRigHook();
     }
     tempDevice->Release();
     d3d9->Release();
@@ -271,6 +271,7 @@ bool D3D9Hook::Initialize() {
         MH_RemoveHook(presentAddr);
         MH_RemoveHook(reinterpret_cast<void*>(ActiveProfile().calcCullingPlanes));
         MH_RemoveHook(reinterpret_cast<void*>(ActiveProfile().renderAccumulator));
+        MH_RemoveHook(reinterpret_cast<void*>(ActiveProfile().updateFirstPerson));
         return false;
     }
 
