@@ -399,11 +399,15 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
         if (g_aimProjectionValid) {
             g_mainCameraTanFovX = f[1];
             g_mainCameraTanFovY = f[2];
-            float offset[3]{};
+            // The camera's eye already carries the rig's share, so the whole
+            // lean is what the camera added plus that share.
+            const auto rig = g_rigLean.Applied();
+            float lean[3]{rig.x, rig.y, rig.z};
             if (s_hasPositionState) {
-                for (int i = 0; i < 3; ++i) offset[i] = s_positionAfter[i] - s_positionBefore[i];
+                for (int i = 0; i < 3; ++i) lean[i] += s_positionAfter[i] - s_positionBefore[i];
             }
-            g_weaponView.Capture(s_matrixBeforeRotation, camMatrix, offset, controller->IsTrueFreeLook(), f[1], f[2]);
+            g_weaponView.Capture(s_matrixBeforeRotation, camMatrix, lean, controller->IsTrueFreeLook(),
+                                 GetTickCount64(), f[1], f[2]);
         } else {
             g_weaponView.valid = false;
         }

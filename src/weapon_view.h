@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cameraunlock/ads/ads_fade.h>
+
 #include <cmath>
 
 namespace HeadTracking {
@@ -14,17 +16,22 @@ struct WeaponView {
 
     // Sights locked keeps the weapon camera at the clean eye, so a lean
     // parallaxes the world past the weapon instead of throwing it off its
-    // sights. True free look moves it with the collision-clamped world lean
-    // `offset`, so the weapon stays put in the world while the eye leaves it.
-    void Capture(const float* clean, const float* tracked, const float* offset, bool trueFreeLook,
-                 float worldTanX, float worldTanY) {
+    // sights. True free look moves it with the whole collision-clamped world
+    // lean, the camera's share plus the rig's, so the weapon stays put in the
+    // world while the eye leaves it. The toggle rides AdsFade's transition
+    // rather than stepping the weapon by the whole lean in one frame; fed the
+    // mode as the aim state, the fade rests at the clean eye in sights locked,
+    // so the default mode starts there without a transition.
+    void Capture(const float* clean, const float* tracked, const float* lean, bool trueFreeLook,
+                 unsigned long long nowMs, float worldTanX, float worldTanY) {
+        const float freeLook = 1.0f - m_freeLook.Update(trueFreeLook, nowMs);
         for (int row = 0; row < 3; ++row) {
             translation[row] = 0;
             for (int col = 0; col < 3; ++col) {
                 rotation[row * 3 + col] = 0;
                 for (int k = 0; k < 3; ++k)
                     rotation[row * 3 + col] += clean[k * 3 + row] * tracked[k * 3 + col];
-                if (trueFreeLook) translation[row] += clean[col * 3 + row] * offset[col];
+                translation[row] += clean[col * 3 + row] * lean[col] * freeLook;
             }
         }
         tanX = worldTanX;
@@ -65,6 +72,9 @@ struct WeaponView {
         }
         for (int i = 0; i < 12; ++i) transform[i] = result[i];
     }
+
+private:
+    cameraunlock::ads::AdsFade m_freeLook;
 };
 
 namespace D3D9Internal {
