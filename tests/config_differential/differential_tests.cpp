@@ -446,6 +446,8 @@ const std::set<Concept>& AllRows() {
 std::set<Concept> UntouchedRows(const Record& import, const Record& noFile) {
     std::set<Concept> untouched = AllRows();
     for (const char* entry : {"field.udpPort", "field.localSmoothing", "field.remoteSmoothing", "field.worldSpaceYaw"}) {
+        // Normalisation N2 writes a smoothing that is not finite as default.
+        if (IsNaN(import.at(entry)) && std::string(entry).find("Smoothing") != std::string::npos) continue;
         if (import.at(entry) != noFile.at(entry)) untouched.erase(*RowOf(entry));
     }
     if (import.at("field.toggleKey") != noFile.at("field.toggleKey")) untouched.erase(Concept::ToggleKey);
