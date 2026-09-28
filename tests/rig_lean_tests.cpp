@@ -55,8 +55,9 @@ struct Game {
 
     Frame Step(const Vec3& lean, bool aiming, bool trueFreeLook = false, bool firstPerson = true) {
         Frame f;
-        f.rig = rig.TakeRig();
-        const Vec3 cameraEye = clean + f.rig;
+        f.rig = rig.TakeRig(firstPerson);
+        // The first-person camera sits on the skeleton; the third-person one does not.
+        const Vec3 cameraEye = firstPerson ? clean + f.rig : clean;
         f.camera = rig.Split(lean, kForward, aiming, trueFreeLook, firstPerson, now);
         f.eye = cameraEye + f.camera;
         rig.EndFrame();
@@ -129,19 +130,19 @@ static void EveryStopReleasesTheRig() {
         Game g;
         for (int i = 0; i < 40; ++i) g.Step(lean, true);
         g.rig.Stop();
-        Check(IsZero(g.rig.TakeRig()), "a suspend puts the rig back at its origin");
+        Check(IsZero(g.rig.TakeRig(true)), "a suspend puts the rig back at its origin");
     }
     {
         Game g;
         for (int i = 0; i < 40; ++i) g.Step(lean, true);
-        g.rig.TakeRig();
+        g.rig.TakeRig(true);
         g.rig.EndFrame();
         // A frame whose camera never ran: the next skeleton update writes nothing.
-        Check(IsZero(g.rig.TakeRig()), "a frame without a camera update leaves the rig alone");
+        Check(IsZero(g.rig.TakeRig(true)), "a frame without a camera update leaves the rig alone");
     }
 }
 
-static void TrueFreeLookAndThirdPersonKeepTheLeanOnTheCamera() {
+static void TrueFreeLookKeepsTheLeanOnTheCamera() {
     const Vec3 lean = PitchedLean(15.4f, 3.0f, 0.0f);
     Game g;
     for (int i = 0; i < 40; ++i) {
@@ -149,8 +150,30 @@ static void TrueFreeLookAndThirdPersonKeepTheLeanOnTheCamera() {
         Check(IsZero(f.rig), "true free look never moves the rig");
         Check(Near(f.camera, lean), "true free look keeps the whole lean on the camera");
     }
+}
+
+// Sights locked is a first-person mode. In third person the lean stays whole on
+// the camera through the aim, including the frame the view leaves first person
+// with the sights up and the rig still holding a share.
+static void ThirdPersonKeepsTheWholeLeanWhileAiming() {
+    const Vec3 lean = PitchedLean(15.4f, 3.0f, -2.0f);
     Game third;
-    for (int i = 0; i < 40; ++i) Check(IsZero(third.Step(lean, true, false, false).rig), "the third-person camera never moves the rig");
+    for (int i = 0; i < 40; ++i) {
+        const Frame f = third.Step(lean, true, false, false);
+        Check(IsZero(f.rig), "the third-person camera never moves the rig");
+        Check(Near(f.camera, lean), "the third-person camera keeps the whole lean while aiming");
+    }
+    Game g;
+    for (int i = 0; i < 40; ++i) g.Step(lean, true);
+    for (int i = 0; i < 40; ++i) {
+        const Frame f = g.Step(lean, true, false, false);
+        Check(IsZero(f.rig), "leaving first person writes nothing more to the skeleton");
+        Check(Near(f.eye, g.clean + lean), "leaving first person with the sights up keeps the whole lean on the eye");
+    }
+    for (int i = 0; i < 40; ++i) {
+        const Frame f = g.Step(lean, true);
+        Check(Near(f.eye, g.clean + lean), "back in first person the eye still takes the whole lean");
+    }
 }
 
 // A wall 20 units along +x from the clean eye.
@@ -178,7 +201,7 @@ static void TheClampHoldsTheSameStandoffWhicheverCarrier() {
         const Vec3 aimForward{0.0f, 1.0f, 0.0f};
         Frame f;
         for (int i = 0; i < 40; ++i) {
-            f.rig = g.rig.TakeRig();
+            f.rig = g.rig.TakeRig(true);
             const Vec3 cameraEye = g.clean + f.rig;
             // As the culling hook does: clamp from the camera's eye minus the rig's share.
             const Vec3 lean = clamp.Apply(cameraEye - g.rig.Applied(), desired, 0.016f, &Wall, &wallX);
@@ -198,7 +221,8 @@ int main() {
     LeaningInWhileAimingStaysOnTheCamera();
     EveryCarrierPutsTheEyeInTheSamePlace();
     EveryStopReleasesTheRig();
-    TrueFreeLookAndThirdPersonKeepTheLeanOnTheCamera();
+    TrueFreeLookKeepsTheLeanOnTheCamera();
+    ThirdPersonKeepsTheWholeLeanWhileAiming();
     TheClampHoldsTheSameStandoffWhicheverCarrier();
     if (g_failures) {
         std::fprintf(stderr, "%d failure(s)\n", g_failures);

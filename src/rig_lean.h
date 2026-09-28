@@ -18,8 +18,10 @@ public:
 
     // At the skeleton update: the world offset to add to the root this frame.
     // Taken once, so a frame whose camera never ran writes nothing next frame.
-    Vec3 TakeRig() {
-        m_applied = m_next;
+    // The third-person camera does not sit on the skeleton, so there nothing is
+    // written and the camera carries the whole lean, sights up or not.
+    Vec3 TakeRig(bool firstPerson) {
+        m_applied = firstPerson ? m_next : Vec3();
         m_next = Vec3();
         return m_applied;
     }

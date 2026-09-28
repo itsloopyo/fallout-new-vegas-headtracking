@@ -15,7 +15,7 @@ void* s_updateFirstPerson = nullptr;
 // updates the skeleton. The root's parent carries no transform, so its local
 // translate is in world axes and a world offset adds straight on.
 void __fastcall HookedUpdateFirstPerson(uint8_t* player, void*) {
-    const cameraunlock::math::Vec3 rig = g_rigLean.TakeRig();
+    const cameraunlock::math::Vec3 rig = g_rigLean.TakeRig(IsFirstPerson());
     auto* root = player ? *reinterpret_cast<uint8_t**>(player + 0x694) : nullptr;
     if (root && !D3D9Hook::IsFatalErrorSet() && (rig.x != 0.0f || rig.y != 0.0f || rig.z != 0.0f)) {
         auto* local = reinterpret_cast<float*>(root + 0x58);

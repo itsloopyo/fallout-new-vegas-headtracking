@@ -158,9 +158,11 @@ sights still lined up, and your rounds land where those sights point. Head
 movement is scaled to the zoom, so a scope does not magnify it.
 
 Leaning carries on through the aim. As the sights come up, your arms and weapon
-move with your head, so the sights stay in front of your eye, and your rounds
-leave from where your eye is. Lean round a corner with the sights up and you can
-hit what you can see from there.
+move with your head when you lean to the side or up and down, so the sights stay
+in front of your eye, and your rounds leave from where your eye is. Lean round a
+corner with the sights up and you can hit what you can see from there. Leaning
+toward the sights brings them closer to your eye. In third person the view keeps
+the whole lean while you aim.
 
 By default leaning never takes your eye off the sights. `Insert` /
 `Ctrl+Shift+U` switches to **true free look**: the weapon stays put and your
