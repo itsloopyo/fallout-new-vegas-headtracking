@@ -34,7 +34,6 @@ public:
     void Bind(const Config& config);
 
     void Start();
-    void Stop();
 
     // Set from the render thread each frame (GameState::CanProcessInput).
     void SetInputAllowed(bool allowed) { m_inputAllowed.store(allowed); }

@@ -18,9 +18,6 @@ public:
     // Must be called after the game has created its D3D device
     bool Initialize();
 
-    // Cleanup and restore original functions
-    void Shutdown();
-
     // Set the camera controller that provides rotation offsets
     void SetCameraController(CameraController* controller);
 
@@ -45,7 +42,6 @@ public:
 
 private:
     D3D9Hook();
-    ~D3D9Hook();
 
     // Disable copying
     D3D9Hook(const D3D9Hook&) = delete;
@@ -57,15 +53,11 @@ private:
 
     // State
     bool m_initialized;
-    bool m_hooked;
     bool m_enabled;
     bool m_fatalError;  // Set on SEH exception - disables hook permanently
 
     // Original function pointer
     static void* s_originalPresent;
-
-    // Device vtable for unhooking
-    void** m_deviceVTable;
 
     // Camera controller reference
     static CameraController* s_cameraController;

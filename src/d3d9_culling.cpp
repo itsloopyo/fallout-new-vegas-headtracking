@@ -14,6 +14,7 @@
 #include <cameraunlock/math/angle_utils.h>
 #include <cameraunlock/camera/zoom_compensation.h>
 #include <cameraunlock/logging/file_log.h>
+#include <cameraunlock/time/qpc_clock.h>
 
 #include <cstring>
 #include <cmath>
@@ -169,22 +170,29 @@ static void ApplyCameraPositionOffset(float* camPos, float posX, float posY, flo
     // With the sweep off no allowance may carry over to when it is back on.
     const bool collision = controller.IsLeanCollisionEnabled();
     if (!collision) s_leanClamp.Reset();
-    static ULONGLONG previous = GetTickCount64();
-    const ULONGLONG now = GetTickCount64();
-    const float dt = static_cast<float>(now - previous) * 0.001f;
-    previous = now;
+    // The release eases every frame, so it needs a finer clock than
+    // GetTickCount64, whose ~15.6 ms tick gives most frames above 64 fps a dt of 0.
+    static uint64_t previousUs = cameraunlock::time::QpcNowMicros();
+    const uint64_t nowUs = cameraunlock::time::QpcNowMicros();
+    const float dt = static_cast<float>(nowUs - previousUs) * 1e-6f;
+    previousUs = nowUs;
     // The camera's eye already carries the rig's share; the clamp runs once on
     // the whole lean from the clean eye, before the split.
     const Vec3 applied = g_rigLean.Applied();
     const Vec3 lean = s_leanClamp.Apply({camPos[0] - applied.x, camPos[1] - applied.y, camPos[2] - applied.z},
                                         desired, dt, collision ? &QueryLean : nullptr, nullptr);
-    if (s_leanClamp.LastQueryFailed()) {
-        D3D9Hook::SignalFatalError("camera collision query");
-        return;
+    // The sweep hangs off the player's character controller. One frame without
+    // it is reported and the lean passes through, as the core clamp does, rather
+    // than switching head tracking off for the rest of the session.
+    static bool s_queryFailed = false;
+    if (s_leanClamp.LastQueryFailed() != s_queryFailed) {
+        s_queryFailed = s_leanClamp.LastQueryFailed();
+        cameraunlock::logging::Line(s_queryFailed ? "Lean collision: the sweep could not run; lean is unclamped"
+                                                  : "Lean collision: the sweep runs again");
     }
     const Vec3 aimForward = Vec3{m[0], m[3], m[6]}.Normalized();
-    const Vec3 offset =
-        g_rigLean.Split(lean, aimForward, IsPlayerAiming(), controller.IsTrueFreeLook(), IsFirstPerson(), now);
+    const Vec3 offset = g_rigLean.Split(lean, aimForward, IsPlayerAiming(), controller.IsTrueFreeLook(),
+                                        IsFirstPerson(), nowUs / 1000);
     camPos[0] += offset.x;
     camPos[1] += offset.y;
     camPos[2] += offset.z;
@@ -378,6 +386,10 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
         SetCrosshairTileVisible(false);
         g_crosshairDisabled = true;
     }
+    // The aim trace decides only whether the reticle can be placed. The rotation
+    // is already in the transform, so the frustum widening and the projection
+    // rebuild below must run whatever the trace answered.
+    bool aimTraced = false;
     if (appliedRotation) {
         using cameraunlock::math::Vec3;
         const auto* position = reinterpret_cast<const float*>(
@@ -391,14 +403,15 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
         g_bodyAimInCamera[0] = delta.x*camMatrix[0] + delta.y*camMatrix[3] + delta.z*camMatrix[6];
         g_bodyAimInCamera[1] = delta.x*camMatrix[1] + delta.y*camMatrix[4] + delta.z*camMatrix[7];
         g_bodyAimInCamera[2] = delta.x*camMatrix[2] + delta.y*camMatrix[5] + delta.z*camMatrix[8];
-        if (!hit.queried) appliedRotation = false;
+        aimTraced = hit.queried;
     }
     float origLeft = 0, origRight = 0, origTop = 0, origBottom = 0;
 
     if (isMainCamera) {
-        g_aimProjectionValid = appliedRotation && f && std::isfinite(f[1]) &&
-                              std::isfinite(f[2]) && f[1] > 0.0f && f[2] > 0.0f;
-        if (g_aimProjectionValid) {
+        const bool lensReadable = appliedRotation && f && std::isfinite(f[1]) &&
+                                  std::isfinite(f[2]) && f[1] > 0.0f && f[2] > 0.0f;
+        g_aimProjectionValid = lensReadable && aimTraced;
+        if (lensReadable) {
             g_mainCameraTanFovX = f[1];
             g_mainCameraTanFovY = f[2];
             // The camera's eye already carries the rig's share, so the whole
@@ -409,7 +422,7 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
                 for (int i = 0; i < 3; ++i) lean[i] += s_positionAfter[i] - s_positionBefore[i];
             }
             g_weaponView.Capture(s_matrixBeforeRotation, camMatrix, lean, controller->IsTrueFreeLook(),
-                                 GetTickCount64(), f[1], f[2]);
+                                 cameraunlock::time::QpcNowMicros() / 1000, f[1], f[2]);
         } else {
             g_weaponView.valid = false;
         }

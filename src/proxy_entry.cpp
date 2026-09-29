@@ -29,9 +29,6 @@ namespace culog = cameraunlock::logging;
 
 namespace {
 
-HMODULE g_realDsound = nullptr;
-FARPROC g_realDirectSoundCreate8 = nullptr;
-
 // Set only in FalloutNV.exe, on a build we have addresses for. Everything the
 // proxy does past loading is gated on this.
 volatile LONG g_driverArmed = 0;
@@ -77,18 +74,21 @@ void OpenProxyLog(const std::wstring& hostPath) {
 
 // Forwarding target has to be resolved by absolute path. Our own file is named
 // dsound.dll and sits in the application directory, which the loader searches
-// first, so LoadLibrary(L"dsound.dll") would find us and recurse.
-void LoadRealDsound() {
-    wchar_t path[MAX_PATH] = {0};
-    UINT n = GetSystemDirectoryW(path, MAX_PATH);
-    if (n == 0 || n >= MAX_PATH) {
-        return;
-    }
-    wcscat_s(path, MAX_PATH, L"\\dsound.dll");
-    g_realDsound = LoadLibraryW(path);
-    if (g_realDsound) {
-        g_realDirectSoundCreate8 = GetProcAddress(g_realDsound, "DirectSoundCreate8");
-    }
+// first, so LoadLibrary(L"dsound.dll") would find us and recurse. Resolved on
+// the first call rather than in DllMain, where LoadLibrary runs under the
+// loader lock.
+FARPROC RealDirectSoundCreate8() {
+    static const FARPROC real = [] {
+        wchar_t path[MAX_PATH] = {0};
+        UINT n = GetSystemDirectoryW(path, MAX_PATH);
+        if (n == 0 || n >= MAX_PATH) {
+            return FARPROC{};
+        }
+        wcscat_s(path, MAX_PATH, L"\\dsound.dll");
+        HMODULE module = LoadLibraryW(path);
+        return module ? GetProcAddress(module, "DirectSoundCreate8") : FARPROC{};
+    }();
+    return real;
 }
 
 // The launcher and other game instances share the title. Only this process's
@@ -192,11 +192,12 @@ void OnFrame() {
 
 extern "C" __declspec(dllexport) HRESULT WINAPI
 DirectSoundCreate8(const GUID* device, void** ds8, void* outer) {
-    if (!g_realDirectSoundCreate8) {
+    const FARPROC real = RealDirectSoundCreate8();
+    if (!real) {
         return E_FAIL;
     }
     using Fn = HRESULT(WINAPI*)(const GUID*, void**, void*);
-    return reinterpret_cast<Fn>(g_realDirectSoundCreate8)(device, ds8, outer);
+    return reinterpret_cast<Fn>(real)(device, ds8, outer);
 }
 
 namespace HeadTracking {
@@ -219,11 +220,6 @@ void OnProcessAttach(HMODULE self) {
     if (!LoadedAsProxy(self)) {
         return;
     }
-
-    // Unconditional within the proxy deployment: the launcher process needs
-    // its audio too, and an export that only works in the game would break the
-    // process that is not the game.
-    LoadRealDsound();
 
     const std::wstring hostPath = HostImagePath();
     if (!HostIsTheGame(hostPath)) {

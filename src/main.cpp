@@ -213,7 +213,10 @@ BOOL WINAPI DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved) {
             break;
 
         case DLL_PROCESS_DETACH:
-            HeadTrackingPlugin::Instance().Shutdown();
+            // Nothing is torn down. At process exit the other threads are
+            // already gone and Windows asks DLLs to leave cleanup to the OS;
+            // an unload by the script extender only follows a refused Query or
+            // Load, before anything started.
             culog::Line("Detaching from the game process");
             culog::Close();
             break;

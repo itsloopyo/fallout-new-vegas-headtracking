@@ -35,9 +35,12 @@ constexpr double kCmToM = 0.01;
 // Global module handle
 HMODULE g_hModule = nullptr;
 
+// Never destroyed. Its members join threads and close the socket, and a static
+// destructor runs inside DLL_PROCESS_DETACH, where Windows has already killed
+// every other thread and says a DLL must not clean up.
 HeadTrackingPlugin& HeadTrackingPlugin::Instance() {
-    static HeadTrackingPlugin instance;
-    return instance;
+    static HeadTrackingPlugin* instance = new HeadTrackingPlugin();
+    return *instance;
 }
 
 HeadTrackingPlugin::HeadTrackingPlugin()
@@ -62,9 +65,7 @@ HeadTrackingPlugin::HeadTrackingPlugin()
     });
 }
 
-HeadTrackingPlugin::~HeadTrackingPlugin() {
-    Shutdown();
-}
+HeadTrackingPlugin::~HeadTrackingPlugin() = default;
 
 bool HeadTrackingPlugin::Initialize(const NVSEInterface* nvse) {
     if (m_initialized) {
@@ -132,25 +133,6 @@ bool HeadTrackingPlugin::Initialize() {
     culog::Line("Plugin initialized; tracking starts when gameplay and tracker data are available.");
 
     return true;
-}
-
-void HeadTrackingPlugin::Shutdown() {
-    if (!m_initialized) {
-        return;
-    }
-
-    m_hotkeyHandler->Stop();
-
-    // Shutdown D3D hook
-    D3D9Hook::Instance().Shutdown();
-
-    // Shutdown UDP receiver
-    if (m_udpReceiver) {
-        m_udpReceiver->Shutdown();
-    }
-
-    m_initialized = false;
-    m_gameLoaded = false;
 }
 
 void HeadTrackingPlugin::Update() {

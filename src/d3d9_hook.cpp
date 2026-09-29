@@ -26,8 +26,40 @@ void* D3D9Hook::s_originalPresent = nullptr;
 CameraController* D3D9Hook::s_cameraController = nullptr;
 bool D3D9Hook::s_fatalErrorFlag = false;
 
+constexpr int RESET_VTABLE_INDEX = 16;
 constexpr int PRESENT_VTABLE_INDEX = 17;
 using PresentFn = HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*, const RECT*, const RECT*, HWND, const RGNDATA*);
+using ResetFn = HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*, D3DPRESENT_PARAMETERS*);
+
+static void* s_originalReset = nullptr;
+
+// Cached backbuffer surface for HookedPresent's "is this the swapchain backbuffer?"
+// gate. GetBackBuffer is a COM call that AddRefs every frame; storing the pointer
+// once (the swap chain keeps the surface alive across frames) lets us replace two
+// per-frame COM calls + Releases with one GetRenderTarget + a pointer compare.
+static IDirect3DSurface9* s_cachedBackBuffer = nullptr;
+static IDirect3DDevice9* s_backBufferDevice = nullptr;
+
+// Reset fails with D3DERR_INVALIDCALL while anything outside the game holds a
+// swap chain back buffer or a state block, which is what a fullscreen alt-tab
+// runs into. Both are recreated on the next reticle draw.
+static HRESULT STDMETHODCALLTYPE HookedReset(IDirect3DDevice9* device, D3DPRESENT_PARAMETERS* params) {
+    if (D3D9Internal::g_cachedStateBlock) {
+        D3D9Internal::g_cachedStateBlock->Release();
+        D3D9Internal::g_cachedStateBlock = nullptr;
+        D3D9Internal::g_stateBlockDevice = nullptr;
+    }
+    if (s_cachedBackBuffer) {
+        s_cachedBackBuffer->Release();
+        s_cachedBackBuffer = nullptr;
+        s_backBufferDevice = nullptr;
+    }
+    const HRESULT result = reinterpret_cast<ResetFn>(s_originalReset)(device, params);
+    if (FAILED(result)) {
+        cameraunlock::logging::Line("Device Reset returned 0x%08lX", result);
+    }
+    return result;
+}
 
 // NiTArray structure (from xNVSE)
 struct NiTArray {
@@ -157,10 +189,8 @@ D3D9Hook& D3D9Hook::Instance() {
 
 D3D9Hook::D3D9Hook()
     : m_initialized(false)
-    , m_hooked(false)
     , m_enabled(true)
-    , m_fatalError(false)
-    , m_deviceVTable(nullptr) {
+    , m_fatalError(false) {
     memset(m_lastError, 0, sizeof(m_lastError));
 }
 
@@ -172,10 +202,6 @@ void D3D9Hook::SignalFatalError(const char* context) {
     HT_LOG_D3D("=== FATAL ERROR: SEH exception in %s ===", context);
     HT_LOG_D3D("=== Head tracking DISABLED - hook will no longer apply camera rotation ===");
     (void)context;
-}
-
-D3D9Hook::~D3D9Hook() {
-    Shutdown();
 }
 
 bool D3D9Hook::Initialize() {
@@ -260,26 +286,29 @@ bool D3D9Hook::Initialize() {
     }
     if (created) {
         created = D3D9Internal::CreateHook(presentAddr, reinterpret_cast<void*>(&HookedPresent), &s_originalPresent) &&
+                  D3D9Internal::CreateHook(vtable[RESET_VTABLE_INDEX], reinterpret_cast<void*>(&HookedReset),
+                                           &s_originalReset) &&
                   D3D9Internal::InstallCullingHook() && D3D9Internal::InstallWeaponViewHook() &&
                   D3D9Internal::InstallSkyViewHook() && D3D9Internal::InstallRigHook();
+        if (!created) {
+            snprintf(m_lastError, sizeof(m_lastError), "MH_CreateHook failed (see the line above)");
+        }
     }
     tempDevice->Release();
     d3d9->Release();
     DestroyWindow(tempWindow);
     UnregisterClassA(wc.lpszClassName, wc.hInstance);
-    if (!created) {
-        MH_RemoveHook(presentAddr);
-        MH_RemoveHook(reinterpret_cast<void*>(ActiveProfile().calcCullingPlanes));
-        MH_RemoveHook(reinterpret_cast<void*>(ActiveProfile().renderAccumulator));
-        MH_RemoveHook(reinterpret_cast<void*>(ActiveProfile().updateFirstPerson));
-        return false;
+    if (created) {
+        status = MH_EnableHook(MH_ALL_HOOKS);
+        created = status == MH_OK;
+        if (!created) {
+            snprintf(m_lastError, sizeof(m_lastError), "MH_EnableHook: %s", MH_StatusToString(status));
+        }
     }
-
-    m_hooked = true;
-    m_deviceVTable = vtable;
-    status = MH_EnableHook(MH_ALL_HOOKS);
-    if (status != MH_OK) {
-        snprintf(m_lastError, sizeof(m_lastError), "MH_EnableHook: %s", MH_StatusToString(status));
+    if (!created) {
+        // Removes every hook created so far, so the next game load can retry
+        // from a clean slate instead of failing on MH_ERROR_ALREADY_CREATED.
+        MH_Uninitialize();
         return false;
     }
 
@@ -287,33 +316,6 @@ bool D3D9Hook::Initialize() {
     HT_LOG_D3D("D3D9Hook (Present + Culling) initialized successfully!");
 
     return true;
-}
-
-// Cached backbuffer surface for HookedPresent's "is this the swapchain backbuffer?"
-// gate. GetBackBuffer is a COM call that AddRefs every frame; storing the pointer
-// once (the swap chain keeps the surface alive across frames) lets us replace two
-// per-frame COM calls + Releases with one GetRenderTarget + a pointer compare.
-// Invalidated on Shutdown and when the device changes.
-static IDirect3DSurface9* s_cachedBackBuffer = nullptr;
-static IDirect3DDevice9* s_backBufferDevice = nullptr;
-
-void D3D9Hook::Shutdown() {
-    if (D3D9Internal::g_cachedStateBlock) {
-        D3D9Internal::g_cachedStateBlock->Release();
-        D3D9Internal::g_cachedStateBlock = nullptr;
-        D3D9Internal::g_stateBlockDevice = nullptr;
-    }
-    if (s_cachedBackBuffer) {
-        s_cachedBackBuffer->Release();
-        s_cachedBackBuffer = nullptr;
-        s_backBufferDevice = nullptr;
-    }
-
-    if (m_hooked) {
-        HT_LOG_D3D("D3D9Hook shutdown (hook remains in place for stability)");
-    }
-    m_initialized = false;
-    m_hooked = false;
 }
 
 void D3D9Hook::ResetUICache() {
@@ -368,6 +370,9 @@ static void DetectTeleport() {
 HRESULT STDMETHODCALLTYPE D3D9Hook::HookedPresent(IDirect3DDevice9* device, const RECT* source,
     const RECT* destination, HWND window, const RGNDATA* dirtyRegion) {
     if (IsFatalErrorSet()) {
+        // A failure part way through a frame can leave this frame's head pose
+        // in the camera; hand it back clean before going quiet.
+        D3D9Internal::RestoreCamera();
         const auto original = reinterpret_cast<PresentFn>(s_originalPresent);
         return original(device, source, destination, window, dirtyRegion);
     }

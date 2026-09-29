@@ -39,6 +39,4 @@ void HotkeyHandler::Bind(const Config& config) {
 
 void HotkeyHandler::Start() { m_poller.Start(); }
 
-void HotkeyHandler::Stop() { m_poller.Stop(); }
-
 }  // namespace HeadTracking

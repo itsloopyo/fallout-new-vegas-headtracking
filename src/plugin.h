@@ -41,7 +41,6 @@ public:
 
     // Loader-independent initialization, used by the proxy deployment.
     bool Initialize();
-    void Shutdown();
     void Update();
     void OnGameLoaded();
     void OnGameExit();
