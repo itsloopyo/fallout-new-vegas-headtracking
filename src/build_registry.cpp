@@ -53,6 +53,7 @@ const BuildProfile* g_active = nullptr;
 }  // namespace
 
 const BuildProfile* ResolveRunningBuild() {
+    g_active = nullptr;
     RunningImage image = {};
     if (!ReadRunningImage(&image)) {
         return nullptr;

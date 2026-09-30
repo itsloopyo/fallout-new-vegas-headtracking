@@ -14,6 +14,15 @@ add_executable(fnv_startup_tests tests/startup_tests.cpp)
 target_include_directories(fnv_startup_tests PRIVATE src)
 add_test(NAME fnv_startup COMMAND fnv_startup_tests)
 
+add_executable(fnv_build_registry_tests
+    tests/build_registry_tests.cpp
+    src/build_registry.cpp
+    src/steam_offsets.cpp
+    src/gamepass_offsets.cpp
+)
+target_include_directories(fnv_build_registry_tests PRIVATE src cameraunlock-core/cpp/include)
+add_test(NAME fnv_build_registry COMMAND fnv_build_registry_tests)
+
 # Debug logging option (disabled by default for release builds)
 option(HEADTRACKING_DEBUG_LOGGING "Enable debug file logging (performance impact)" OFF)
 
