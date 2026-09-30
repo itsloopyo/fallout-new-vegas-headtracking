@@ -5,6 +5,7 @@
 #include "d3d9_hook.h"
 #include "debug_log.h"
 #include "build_profile.h"
+#include "runtime_discovery.h"
 #include "nvse_abi/GameAPI.h"
 #include <cameraunlock/logging/file_log.h>
 
@@ -21,18 +22,14 @@ IDirect3DStateBlock9* g_cachedStateBlock = nullptr;
 IDirect3DDevice9* g_stateBlockDevice = nullptr;
 bool g_crosshairDisabled = false;
 
-// Tile value IDs (from xNVSE GameTiles.h)
-constexpr uint32_t kTileValue_visible = 0x0FA3;
-
-// Tile::SetFloatValue function pointer (address from xNVSE)
 typedef void (__thiscall *TileSetFloatValueFn)(void* tile, uint32_t valueID, float value, bool propagate);
 bool IsGamePaused() {
-    void* interfaceMgr = *reinterpret_cast<void**>(ActiveProfile().interfaceManager);
+    void* interfaceMgr = InterfaceManager::GetSingleton();
     if (!interfaceMgr) return false;
 
     __try {
         uint8_t* base = reinterpret_cast<uint8_t*>(interfaceMgr);
-        uint32_t flags0C = *reinterpret_cast<uint32_t*>(base + 0x0C);
+        uint32_t flags0C = *reinterpret_cast<uint32_t*>(base + ActiveLayout().uiMode);
 
 #if HEADTRACKING_DEBUG_LOGGING
         static int logCount = 0;
@@ -42,7 +39,7 @@ bool IsGamePaused() {
         }
 #endif
 
-        return (flags0C & 2) != 0;
+        return flags0C != ActiveLayout().uiGameplayMode;
     } __except(EXCEPTION_EXECUTE_HANDLER) {
         HT_LOG_D3D("FATAL: SEH exception in IsGamePaused");
         D3D9Hook::SignalFatalError("IsGamePaused");
@@ -53,17 +50,18 @@ bool IsGamePaused() {
 bool IsPlayerAiming() {
     auto* player = reinterpret_cast<uint8_t*>(PlayerCharacter::GetSingleton());
     if (!player) return false;
-    auto* process = *reinterpret_cast<uint8_t**>(player + 0x68);
-    return process && process[0x228] != 0;
+    auto* process = *reinterpret_cast<uint8_t**>(player + ActiveLayout().playerProcess);
+    return RuntimeObject(process, ActiveLayout().processAds + 1, ActiveRuntime().processVtable, "HighProcess ADS") &&
+        process[ActiveLayout().processAds] != 0;
 }
 
 void SetCrosshairTileVisible(bool visible) {
     auto* hud = *reinterpret_cast<uint8_t**>(ActiveProfile().hudMainMenu);
-    if (!hud) return;
-    void* tile = *reinterpret_cast<void**>(hud + 0x12C);
-    if (!tile) return;
+    if (!RuntimeObject(hud, ActiveLayout().hudCrosshair + 4, ActiveRuntime().hudVtable, "HUDMainMenu")) return;
+    void* tile = *reinterpret_cast<void**>(hud + ActiveLayout().hudCrosshair);
+    if (!RuntimeObject(tile, 4, ActiveRuntime().tileVtables, "reticle tile")) return;
     reinterpret_cast<TileSetFloatValueFn>(ActiveProfile().tileSetFloatValue)(
-        tile, kTileValue_visible, visible ? 1.0f : 0.0f, true);
+        tile, ActiveLayout().tileVisible, visible ? 1.0f : 0.0f, true);
 }
 
 void DrawAimCrosshair(IDirect3DDevice9* device, const D3DVIEWPORT9& vp) {

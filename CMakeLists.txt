@@ -42,6 +42,16 @@ endif()
 set(CAMERAUNLOCK_BUILD_HOOKS ON CACHE BOOL "" FORCE)
 add_subdirectory(${CMAKE_SOURCE_DIR}/cameraunlock-core/cpp cameraunlock-core)
 
+add_library(fnv_discovery STATIC src/runtime_discovery.cpp)
+target_include_directories(fnv_discovery PRIVATE cameraunlock-core/vendor/minhook/src/hde)
+target_link_libraries(fnv_discovery PUBLIC minhook)
+target_compile_options(fnv_discovery PRIVATE /W4 /WX)
+add_executable(fnv_runtime_discovery_tests tests/runtime_discovery_tests.cpp)
+target_include_directories(fnv_runtime_discovery_tests PRIVATE src cameraunlock-core/vendor/minhook/src/hde)
+target_link_libraries(fnv_runtime_discovery_tests PRIVATE minhook)
+target_compile_options(fnv_runtime_discovery_tests PRIVATE /W4 /WX)
+add_test(NAME fnv_runtime_discovery COMMAND fnv_runtime_discovery_tests)
+
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
 # The canonical config conversion's differential test. The oracle is v0.3.1's
@@ -148,6 +158,7 @@ add_library(HeadTracking SHARED ${SOURCES} ${HEADERS} ${NVSE_ABI_HEADERS} src/ds
 
 # Link CameraUnlock library, Winsock and D3D9
 target_link_libraries(HeadTracking
+    fnv_discovery
     cameraunlock
     minhook
     ws2_32

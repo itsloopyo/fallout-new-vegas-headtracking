@@ -1,6 +1,5 @@
-#include "build_profile.h"
+#include "runtime_discovery.h"
 #include <cameraunlock/logging/file_log.h>
-#include <Windows.h>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -8,76 +7,65 @@
 
 namespace {
 std::string logText;
-
+HeadTracking::RuntimeBindings fixture;
+bool valid = true;
 void Check(bool condition, const char* message) {
-    if (!condition) {
-        std::fprintf(stderr, "%s\n", message);
-        std::exit(1);
-    }
+    if (!condition) { std::fprintf(stderr, "%s\n", message); std::exit(1); }
 }
 }
-
 namespace cameraunlock::logging {
 void Line(const char* format, ...) {
     char line[1024];
     va_list args;
     va_start(args, format);
-    const int length = std::vsnprintf(line, sizeof(line), format, args);
+    std::vsnprintf(line, sizeof(line), format, args);
     va_end(args);
-    Check(length >= 0 && static_cast<size_t>(length) < sizeof(line), "registry diagnostic fits capture");
-    logText.append(line, static_cast<size_t>(length));
-    logText += '\n';
+    logText += line;
 }
 }
-
+namespace HeadTracking {
+extern const BuildProfile kSteamProfile_20110701;
+extern const BuildProfile kGamePassProfile_20160121;
+bool DiscoverRuntime(const uint8_t*, size_t, uint32_t, RuntimeBindings& output, std::string& diagnostic) {
+    output = {};
+    if (!valid) { diagnostic = "missing fixture anchor"; return false; }
+    output = fixture;
+    return true;
+}
+}
 int main() {
     using namespace HeadTracking;
-    auto* dos = reinterpret_cast<IMAGE_DOS_HEADER*>(GetModuleHandleW(nullptr));
-    auto* nt = reinterpret_cast<IMAGE_NT_HEADERS32*>(reinterpret_cast<unsigned char*>(dos) + dos->e_lfanew);
-    const auto original = *nt;
-    DWORD protection;
-    Check(VirtualProtect(nt, sizeof(*nt), PAGE_READWRITE, &protection) != 0,
-          "make this test process's PE header writable");
-
-    const uint32_t fingerprints[][3] = {
-        {0x4E0D50ED, 0x0107B000, 0x00FCB4FE},
-        {0x56A157BC, 0x01006000, 0x00F5CA94}
-    };
-    const char* names[] = {"steam-win32-20110701", "gamepass-win32-20160121"};
-    for (size_t i = 0; i < 2; ++i) {
-        for (size_t field = 0; field < 3; ++field) {
-            nt->FileHeader.TimeDateStamp = fingerprints[i][0];
-            nt->OptionalHeader.SizeOfImage = fingerprints[i][1];
-            nt->OptionalHeader.CheckSum = fingerprints[i][2];
-            const auto* selected = ResolveRunningBuild();
-            Check(selected && selected->name == std::string(names[i]), "select exact historical fingerprint");
-            Check(&ActiveProfile() == selected, "publish selected profile");
-
-            if (field == 0) ++nt->FileHeader.TimeDateStamp;
-            if (field == 1) ++nt->OptionalHeader.SizeOfImage;
-            if (field == 2) ++nt->OptionalHeader.CheckSum;
-            Check(ResolveRunningBuild() == nullptr, "reject an unlisted fingerprint");
-            logText.clear();
-            LogBuildIdentification();
-            Check(logText.find("Unsupported game fingerprint") != std::string::npos,
-                  "a rejected selection must clear the previously active profile");
-            Check(logText.find("supported profile selected") == std::string::npos,
-                  "a rejected selection must not report a stale match");
-        }
-        nt->FileHeader.TimeDateStamp = fingerprints[i][0];
-        nt->OptionalHeader.SizeOfImage = fingerprints[i][1];
-        nt->OptionalHeader.CheckSum = fingerprints[i][2];
-        Check(ResolveRunningBuild() != nullptr, "reselect after rejection");
-        nt->Signature = 0;
-        Check(ResolveRunningBuild() == nullptr, "reject invalid PE signature");
-        nt->Signature = original.Signature;
+    for (const auto* known : {&kSteamProfile_20110701, &kGamePassProfile_20160121}) {
+        fixture = {};
+        fixture.profile = *known;
+        fixture.layout.playerThirdPerson = 0x28;
+        fixture.playerVtables = {0x500010};
+        valid = true;
+        Check(ResolveMappedImage(nullptr, 0, 0x400000) != nullptr, "cross-check known discovered addresses");
+        Check(ActiveLayout().playerThirdPerson == 0x28, "publish discovered fields");
+        alignas(16) uint32_t object[16]{};
+        object[0] = 0x12345678;
+        Check(RuntimeObject(object,sizeof(object),object[0],"fixture object"),"validate live readable owner");
+        Check(!RuntimeObject(object,sizeof(object),0x11223344,"wrong fixture owner") && RuntimeValidationFailed(),"reject live vtable mismatch");
+        Check(!RuntimeObject(object,sizeof(object),object[0],"disabled fixture"),"live rejection remains sticky");
+        Check(RuntimeObject(object,sizeof(object),object[0],"restoration owner",true),"validate safe restoration after another owner fails");
+        Check(!RuntimeObject(object,sizeof(object),0x11223344,"invalid restoration owner",true),"restoration cannot bypass object identity");
+        Check(ResolveMappedImage(nullptr,0,0x400000) && !RuntimeValidationFailed(),"fresh selection resets live rejection");
+        fixture.profile.calcCullingPlanes += 16;
+        Check(!ResolveMappedImage(nullptr, 0, 0x400000), "reject a historical disagreement");
+        Check(DiscoveryDiagnostic().find("calcCullingPlanes") != std::string::npos, "name disagreement");
+        Check(ActiveRuntime().profile.playerBase == 0 && ActiveRuntime().playerVtables.empty(), "clear rejected historical result");
+        ++fixture.profile.timeDateStamp;
+        Check(ResolveMappedImage(nullptr, 0, 0x400000) != nullptr, "unlisted fingerprint uses discovered result");
+        Check(ActiveProfile().calcCullingPlanes == fixture.profile.calcCullingPlanes, "never substitute historical address");
+        valid = false;
+        Check(!ResolveMappedImage(nullptr, 0, 0x400000), "reject discovery after successful selection");
+        Check(ActiveRuntime().profile.playerBase == 0 && ActiveLayout().playerThirdPerson == 0 && ActiveRuntime().playerVtables.empty(), "no stale bindings after rejection");
         logText.clear();
         LogBuildIdentification();
-        Check(logText.find("Unsupported game fingerprint") != std::string::npos,
-              "a header read failure must clear the previously active profile");
+        Check(logText.find("missing fixture anchor") != std::string::npos && logText.find("validated") == std::string::npos, "retain rejection diagnostic");
+        fixture.profile = *known;
+        Check(!ResolveMappedImage(nullptr, 0, 0x400000), "known fingerprint cannot bypass failed discovery");
     }
-    *nt = original;
-    DWORD ignored;
-    Check(VirtualProtect(nt, sizeof(*nt), protection, &ignored) != 0, "restore PE header protection");
-    std::puts("Build registry tests passed");
+    std::puts("Build registry selection contracts passed");
 }

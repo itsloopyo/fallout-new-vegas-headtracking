@@ -61,113 +61,15 @@ static HRESULT STDMETHODCALLTYPE HookedReset(IDirect3DDevice9* device, D3DPRESEN
     return result;
 }
 
-// NiTArray structure (from xNVSE)
-struct NiTArray {
-    void* vtable;
-    void** m_data;
-    uint16_t m_capacity;
-    uint16_t m_firstFree;
-    uint16_t m_numObjs;
-    uint16_t m_growSize;
-};
-
-#if HEADTRACKING_DEBUG_LOGGING
-static const char* GetNiNodeName(uint8_t* node) {
-    if (!node) return "<null>";
-
-    __try {
-        const char* name = *reinterpret_cast<const char**>(node + 0x08);
-        if (name && name[0] != '\0') {
-            if (name[0] >= 32 && name[0] <= 126) {
-                return name;
-            }
-        }
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-        HT_LOG_D3D("FATAL: SEH exception in GetNiNodeName for node at %p", node);
-        D3D9Hook::SignalFatalError("GetNiNodeName");
-        return "<error:fatal>";
-    }
-    return "<unnamed>";
-}
-
-static void LogNiNodeHierarchy(uint8_t* node, int depth, int maxDepth = 4) {
-    if (!node || depth > maxDepth) {
-        return;
-    }
-
-    __try {
-        const char* name = GetNiNodeName(node);
-
-        char indent[32] = "";
-        for (int i = 0; i < depth && i < 15; i++) {
-            indent[i*2] = ' ';
-            indent[i*2+1] = ' ';
-        }
-        indent[depth*2] = '\0';
-
-        HT_LOG_D3D("%sNode: %s (addr=%p)", indent, name, node);
-
-        NiTArray* children = reinterpret_cast<NiTArray*>(node + 0x9C);
-
-        HT_LOG_D3D("%s  Children array: vtbl=%p data=%p numObjs=%d", indent,
-               children->vtable, children->m_data, children->m_numObjs);
-
-        if (children && children->m_data && children->m_numObjs > 0 && children->m_numObjs < 100) {
-            for (uint16_t i = 0; i < children->m_numObjs; i++) {
-                uint8_t* child = reinterpret_cast<uint8_t*>(children->m_data[i]);
-                if (child) {
-                    LogNiNodeHierarchy(child, depth + 1, maxDepth);
-                }
-            }
-        }
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-        HT_LOG_D3D("FATAL: SEH exception traversing node at %p", node);
-        D3D9Hook::SignalFatalError("LogNiNodeHierarchy");
-    }
-}
-#endif
-
 namespace D3D9Internal {
 
 void LogPlayerNodes() {
 #if HEADTRACKING_DEBUG_LOGGING
-    static bool logged = false;
-    if (logged) return;
-
-    uint8_t* player = *reinterpret_cast<uint8_t**>(GameOffsets::PlayerBase());
-    if (!player) {
-        HT_LOG_D3D("LogPlayerNodes: No player");
-        return;
-    }
-
-    __try {
-        HT_LOG_D3D("=== Player Node Hierarchy ===");
-        HT_LOG_D3D("Player at: %p", player);
-
-        uint8_t* renderState = *reinterpret_cast<uint8_t**>(player + 0x064);
-        if (renderState) {
-            uint8_t* niNode = *reinterpret_cast<uint8_t**>(renderState + 0x10);
-            HT_LOG_D3D("RenderState NiNode at: %p", niNode);
-            if (niNode) {
-                HT_LOG_D3D("--- RenderState->niNode hierarchy ---");
-                LogNiNodeHierarchy(niNode, 0, 5);
-            }
-        }
-
-        uint8_t* playerNode = *reinterpret_cast<uint8_t**>(player + 0x694);
-        if (playerNode) {
-            HT_LOG_D3D("PlayerNode (1st person) at: %p", playerNode);
-            HT_LOG_D3D("--- playerNode hierarchy ---");
-            LogNiNodeHierarchy(playerNode, 0, 5);
-        }
-
-        logged = true;
-        HT_LOG_D3D("=== End Player Node Hierarchy ===");
-
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-        HT_LOG_D3D("FATAL: SEH exception in LogPlayerNodes");
-        D3D9Hook::SignalFatalError("LogPlayerNodes");
-    }
+    auto* player = RuntimePlayer();
+    if (!player) return;
+    auto* root = *reinterpret_cast<uint8_t**>(player + ActiveLayout().playerFirstPersonRoot);
+    if (RuntimeObject(root, ActiveLayout().nodeLocalPosition + 12, ActiveRuntime().nodeVtables, "first-person NiNode"))
+        HT_LOG_D3D("Player=%p first-person root=%p", player, root);
 #endif
 }
 
@@ -207,6 +109,13 @@ void D3D9Hook::SignalFatalError(const char* context) {
 bool D3D9Hook::Initialize() {
     if (m_initialized) {
         return true;
+    }
+
+    RuntimePlayer();
+    RuntimeCamera();
+    if (RuntimeValidationFailed()) {
+        strcpy_s(m_lastError, "Live camera/player identity disagrees with discovery");
+        return false;
     }
 
     HT_LOG_D3D("D3D9Hook::Initialize - Starting (Present hook)");
@@ -335,17 +244,10 @@ void D3D9Hook::SetEnabled(bool enabled) {
 constexpr float kTeleportDistSq = 500.0f * 500.0f;  // game units squared
 
 static void DetectTeleport() {
-    uint8_t** ppSceneGraph = reinterpret_cast<uint8_t**>(GameOffsets::SceneGraphBase());
-    if (!ppSceneGraph || !*ppSceneGraph) {
-        return;
-    }
-    uint8_t* sceneGraph = *ppSceneGraph;
-    uint8_t* camera = *reinterpret_cast<uint8_t**>(sceneGraph + GameOffsets::kSceneGraphCamera);
-    if (!camera) {
-        return;
-    }
+    auto* camera = RuntimeCamera();
+    if (!camera) return;
 
-    float* camPos = reinterpret_cast<float*>(camera + GameOffsets::kCameraWorldPosition);
+    float* camPos = reinterpret_cast<float*>(camera + GameOffsets::CameraWorldPosition());
     static float lastCamPos[3] = {0, 0, 0};
     static bool hasLastPos = false;
 
@@ -369,7 +271,7 @@ static void DetectTeleport() {
 
 HRESULT STDMETHODCALLTYPE D3D9Hook::HookedPresent(IDirect3DDevice9* device, const RECT* source,
     const RECT* destination, HWND window, const RGNDATA* dirtyRegion) {
-    if (IsFatalErrorSet()) {
+    if (IsFatalErrorSet() || RuntimeValidationFailed()) {
         // A failure part way through a frame can leave this frame's head pose
         // in the camera; hand it back clean before going quiet.
         D3D9Internal::RestoreCamera();

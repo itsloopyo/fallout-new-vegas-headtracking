@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "build_profile.h"
+#include "runtime_discovery.h"
 #include "plugin.h"
 #include "d3d9_hook.h"
 #include "proxy_entry.h"
@@ -29,8 +30,7 @@ namespace culog = cameraunlock::logging;
 
 namespace {
 
-// Set only in FalloutNV.exe, on a build we have addresses for. Everything the
-// proxy does past loading is gated on this.
+// Armed only after discovery and render-hook installation succeed.
 volatile LONG g_driverArmed = 0;
 
 std::wstring HostImagePath() {
@@ -91,31 +91,17 @@ FARPROC RealDirectSoundCreate8() {
     return real;
 }
 
-// The launcher and other game instances share the title. Only this process's
-// game window and executable camera code establish that startup is ready.
-bool WaitForGameStartup(const HeadTracking::BuildProfile& profile, DWORD timeoutMs) {
+bool WaitForGameStartup(DWORD timeoutMs) {
     const ULONGLONG deadline = GetTickCount64() + timeoutMs;
     for (;;) {
         HWND wnd = HeadTracking::FindGameWindow(GetCurrentProcessId());
-        if (wnd && HeadTracking::IsCodeExecutable(profile.calcCullingPlanes) &&
-            HeadTracking::IsCodeExecutable(profile.renderAccumulator) &&
-            HeadTracking::IsCodeExecutable(profile.setupSkyGeometry) &&
-            HeadTracking::IsCodeExecutable(profile.setCameraFov) &&
-            HeadTracking::IsCodeExecutable(profile.updateCameraProjection) &&
-            HeadTracking::IsCodeExecutable(profile.updateFirstPerson)) {
-            culog::Line("Startup ready: process=%lu window=%p camera code executable",
+        if (wnd) {
+            culog::Line("Startup ready for discovery: process=%lu window=%p",
                         GetCurrentProcessId(), wnd);
             return true;
         }
         if (GetTickCount64() >= deadline) {
-            culog::Line("ERROR: startup timed out: process=%lu window=%p cullingExecutable=%d weaponExecutable=%d skyExecutable=%d fovExecutable=%d projectionExecutable=%d firstPersonExecutable=%d",
-                        GetCurrentProcessId(), wnd,
-                        HeadTracking::IsCodeExecutable(profile.calcCullingPlanes),
-                        HeadTracking::IsCodeExecutable(profile.renderAccumulator),
-                        HeadTracking::IsCodeExecutable(profile.setupSkyGeometry),
-                        HeadTracking::IsCodeExecutable(profile.setCameraFov),
-                        HeadTracking::IsCodeExecutable(profile.updateCameraProjection),
-                        HeadTracking::IsCodeExecutable(profile.updateFirstPerson));
+            culog::Line("ERROR: startup timed out waiting for the game's window: process=%lu", GetCurrentProcessId());
             return false;
         }
         Sleep(250);
@@ -127,16 +113,13 @@ DWORD WINAPI InitThread(LPVOID) {
                 HeadTracking::VERSION_MAJOR, HeadTracking::VERSION_MINOR,
                 HeadTracking::VERSION_PATCH);
 
+    if (!WaitForGameStartup(120000)) return 0;
     const auto* profile = HeadTracking::ResolveRunningBuild();
     HeadTracking::LogBuildIdentification();
     if (!profile) {
         // Dormant on purpose: no hooks installed, no memory written, game runs
         // vanilla. Hooking on addresses derived from a different build crashes
         // the player's game within seconds of a save loading.
-        return 0;
-    }
-
-    if (!WaitForGameStartup(*profile, 120000)) {
         return 0;
     }
 
@@ -168,9 +151,10 @@ void OnFrame() {
         return;
     }
     const auto& profile = ActiveProfile();
-    auto* player = *reinterpret_cast<uint8_t**>(profile.playerBase);
+    auto* player = RuntimePlayer();
     auto* ui = *reinterpret_cast<uint8_t**>(profile.interfaceManager);
-    const bool loaded = player && ui && *reinterpret_cast<void**>(player + 0x40);
+    const bool loaded = player && RuntimeObject(ui, ActiveLayout().uiMode + 4, 0, "InterfaceManager lifecycle") &&
+        *reinterpret_cast<void**>(player + ActiveLayout().playerCell);
     static bool wasLoaded = false;
     if (loaded != wasLoaded) {
         wasLoaded = loaded;

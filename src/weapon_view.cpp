@@ -1,6 +1,7 @@
 #include "d3d9_internal.h"
 #include "d3d9_hook.h"
 #include "build_profile.h"
+#include "runtime_discovery.h"
 #include "weapon_view.h"
 #include <cameraunlock/logging/file_log.h>
 #include <cstring>
@@ -14,13 +15,18 @@ using RenderAccumulator = void (__cdecl*)(void*, void*, uint32_t);
 void __cdecl RenderWeaponView(void* camera, void* accumulator, uint32_t flags) {
     const auto original = reinterpret_cast<RenderAccumulator>(s_renderAccumulator);
     auto* main = *reinterpret_cast<uint8_t**>(ActiveProfile().gameMain);
-    if (!g_weaponView.valid || D3D9Hook::IsFatalErrorSet() || !main || !camera ||
-        camera != *reinterpret_cast<void**>(main + 0xA0)) {
+    if (!g_weaponView.valid || D3D9Hook::IsFatalErrorSet() || RuntimeValidationFailed() ||
+        !RuntimeObject(main, ActiveLayout().mainWeaponCamera + 4, 0, "Main weapon camera owner") || !camera ||
+        camera != *reinterpret_cast<void**>(main + ActiveLayout().mainWeaponCamera)) {
         original(camera, accumulator, flags);
         return;
     }
-    auto* transform = reinterpret_cast<float*>(static_cast<uint8_t*>(camera) + 0x68);
-    const auto* frustum = reinterpret_cast<const float*>(static_cast<uint8_t*>(camera) + 0xDC);
+    if (!RuntimeObject(camera, ActiveLayout().cameraFrustum + 28, ActiveRuntime().cameraVtable, "weapon NiCamera")) {
+        original(camera, accumulator, flags);
+        return;
+    }
+    auto* transform = reinterpret_cast<float*>(static_cast<uint8_t*>(camera) + ActiveLayout().cameraTransform);
+    const auto* frustum = reinterpret_cast<const float*>(static_cast<uint8_t*>(camera) + ActiveLayout().cameraFrustum);
     float saved[12];
     std::memcpy(saved, transform, sizeof(saved));
     g_weaponView.Apply(transform, frustum[1], frustum[2]);

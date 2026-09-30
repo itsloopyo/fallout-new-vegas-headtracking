@@ -12,11 +12,13 @@ An unofficial head tracking mod for Fallout: New Vegas that moves the view with 
 
 ## Requirements
 
-- Fallout: New Vegas for Windows. Supported executable profiles: Steam
+- Fallout: New Vegas for Windows. Supported build baselines: Steam
   (2011-07-01) and Xbox Game Pass English (2016-01-21).
 - A tracker sending OpenTrack UDP pose data.
 
-Other executable fingerprints are left untouched and identified in the log.
+The mod validates the required game structures at startup, including on builds
+with an unlisted fingerprint. If validation fails, head tracking stays inactive
+and the log records the reason.
 This mod loads through `dsound.dll` and does not require xNVSE.
 
 ## Installation
@@ -303,12 +305,12 @@ HotkeyDebounceMs=200
 ## Troubleshooting
 
 Check `HeadTracking.log` beside the game executable. The previous launch is
-kept as `HeadTracking.prev.log`. A supported profile, render-hook initialization,
+kept as `HeadTracking.prev.log`. Runtime validation, render-hook initialization,
 and the first received UDP packet are logged separately.
 
 If tracking does not respond, check the logged error, the tracker output port,
 and whether another game is already using that port. Press End to enable
-tracking. For an unsupported build, include the fingerprint line in a bug report.
+tracking. If runtime validation fails, include the diagnostic and fingerprint in a bug report.
 
 If the view needs centring, use the centre control in your tracker. If yaw feels
 awkward at steep viewing angles, switch yaw mode with the key `YawModeKey` lists

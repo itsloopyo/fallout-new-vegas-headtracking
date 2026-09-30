@@ -1,60 +1,49 @@
 #include "world_query.h"
 #include "build_profile.h"
+#include "runtime_discovery.h"
 
 #include <cmath>
-#include <cstddef>
+#include <cstring>
 
 namespace HeadTracking {
-namespace {
-
-struct alignas(16) RayQuery {
-    float start[4]{};
-    float end[4]{};
-    uint32_t shapeFilter = 0;
-    uint32_t collisionFilter = 0;
-    uint32_t reserved28[6]{};
-    float fraction = 1.0f;
-    uint32_t shapeKey = UINT32_MAX;
-    uint32_t reserved48[2]{};
-    uint32_t rootShapeKey = UINT32_MAX;
-    uint32_t reserved54[23]{};
-};
-static_assert(sizeof(RayQuery) == 0xB0);
-static_assert(offsetof(RayQuery, fraction) == 0x40);
-
-}
-
 WorldHit TraceWorld(const cameraunlock::math::Vec3& start,
                     const cameraunlock::math::Vec3& direction,
                     float distance, bool cameraCollision) {
     const auto& profile = ActiveProfile();
+    const auto& layout = ActiveLayout();
     auto* world = *reinterpret_cast<void**>(profile.tesWorld);
-    auto* player = *reinterpret_cast<uint8_t**>(profile.playerBase);
-    if (!world || !player) return {};
-    auto* process = *reinterpret_cast<uint8_t**>(player + 0x68);
-    if (!process) return {};
-    auto* controller = *reinterpret_cast<uint8_t**>(process + 0x138);
-    if (!controller) return {};
-    auto* phantom = *reinterpret_cast<uint8_t**>(controller + 0x594);
-    if (!phantom) return {};
-    auto* object = *reinterpret_cast<uint8_t**>(phantom + 8);
-    if (!object) return {};
+    auto* player = RuntimePlayer();
+    if (!RuntimeObject(world, 4, 0, "TES world trace receiver") || !player) return {};
+    auto* process = *reinterpret_cast<uint8_t**>(player + layout.playerProcess);
+    if (!RuntimeObject(process, layout.processController + 4, ActiveRuntime().processVtable, "HighProcess collision controller")) return {};
+    auto* controller = *reinterpret_cast<uint8_t**>(process + layout.processController);
+    if (!RuntimeObject(controller, layout.controllerPhantom + 4, 0, "character controller")) return {};
+    auto* phantom = *reinterpret_cast<uint8_t**>(controller + layout.controllerPhantom);
+    if (!RuntimeObject(phantom, layout.phantomObject + 4, 0, "character phantom")) return {};
+    auto* object = *reinterpret_cast<uint8_t**>(phantom + layout.phantomObject);
+    if (!RuntimeObject(object, layout.objectFilter + 4, 0, "collision filter owner")) return {};
 
-    RayQuery query;
-    const uint32_t group = *reinterpret_cast<uint32_t*>(object + 0x2C) & 0xFFFF0000;
-    query.collisionFilter = group | (cameraCollision ? 35u : 6u);
-    constexpr float worldToHavok = 0.14287498593330383f;
+    alignas(16) uint8_t query[512]{};
+    const uint32_t group = *reinterpret_cast<uint32_t*>(object + layout.objectFilter) & layout.collisionGroupMask;
+    const uint32_t filter = group | (cameraCollision ? layout.layerCamera : layout.layerAim);
+    const uint32_t missingKey = UINT32_MAX;
+    float fraction = 1.0f;
+    std::memcpy(query + layout.rayFilter, &filter, sizeof(filter));
+    std::memcpy(query + layout.rayFraction, &fraction, sizeof(fraction));
+    std::memcpy(query + layout.rayShapeKey, &missingKey, sizeof(missingKey));
+    std::memcpy(query + layout.rayRootShapeKey, &missingKey, sizeof(missingKey));
     const auto end = start + direction * distance;
-    query.start[0] = start.x * worldToHavok;
-    query.start[1] = start.y * worldToHavok;
-    query.start[2] = start.z * worldToHavok;
-    query.end[0] = end.x * worldToHavok;
-    query.end[1] = end.y * worldToHavok;
-    query.end[2] = end.z * worldToHavok;
-    using CastRay = void* (__thiscall*)(void*, RayQuery*, bool);
-    reinterpret_cast<CastRay>(profile.castRay)(world, &query, true);
-    if (!std::isfinite(query.fraction) || query.fraction < 0.0f || query.fraction > 1.0f) return {};
-    return {true, query.fraction < 1.0f, distance * query.fraction};
+    const float from[4] = {start.x * layout.worldToHavok, start.y * layout.worldToHavok, start.z * layout.worldToHavok, 0};
+    const float to[4] = {end.x * layout.worldToHavok, end.y * layout.worldToHavok, end.z * layout.worldToHavok, 0};
+    std::memcpy(query + layout.rayStart, from, sizeof(from));
+    std::memcpy(query + layout.rayEnd, to, sizeof(to));
+    using CastRay = void* (__thiscall*)(void*, void*, bool);
+    reinterpret_cast<CastRay>(profile.castRay)(world, query, true);
+    std::memcpy(&fraction, query + layout.rayFraction, sizeof(fraction));
+    if (!std::isfinite(fraction) || fraction < 0.0f || fraction > 1.0f) {
+        RejectRuntimeContract("world trace returned an invalid fraction");
+        return {};
+    }
+    return {true, fraction < 1.0f, distance * fraction};
 }
-
 }

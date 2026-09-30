@@ -67,22 +67,24 @@ void GameState::Update() {
         if (CheckConsoleOpenCached()) {
             newState = newState | GameStateFlags::InConsole;
         }
-        if (IsMenuTypeOpenCached(kMenuType_Dialog)) {
+        if (IsMenuTypeOpenCached(ActiveLayout().menuDialog)) {
             newState = newState | GameStateFlags::InDialogue;
         }
-        if (IsMenuTypeOpenCached(kMenuType_Loading)) {
+        if (IsMenuTypeOpenCached(ActiveLayout().menuLoading)) {
             newState = newState | GameStateFlags::InLoading;
         }
-        if (IsMenuTypeOpenCached(kMenuType_VATS)) {
+        if (IsMenuTypeOpenCached(ActiveLayout().menuVats)) {
             newState = newState | GameStateFlags::InVATS;
         }
-        if (IsMenuTypeOpenCached(kMenuType_Pipboy)) {
+        if (IsMenuTypeOpenCached(ActiveLayout().menuPipboy) ||
+            IsMenuTypeOpenCached(ActiveLayout().menuPipboyStats) ||
+            IsMenuTypeOpenCached(ActiveLayout().menuPipboyData)) {
             newState = newState | GameStateFlags::InPipboy;
         }
-        if (IsMenuTypeOpenCached(kMenuType_Pause)) {
+        if (IsMenuTypeOpenCached(ActiveLayout().menuPause)) {
             newState = newState | GameStateFlags::GamePaused;
         }
-        if (IsMenuTypeOpenCached(kMenuType_CharGen)) {
+        if (IsMenuTypeOpenCached(ActiveLayout().menuCharGen)) {
             newState = newState | GameStateFlags::InCharGen;
         }
     }

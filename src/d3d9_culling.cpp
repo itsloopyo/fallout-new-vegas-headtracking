@@ -119,11 +119,13 @@ static void ApplyRotationToMatrix(float* m, double yawDeg, double pitchDeg, doub
 }
 
 // Check if matrix still contains our rotation
-static bool MatrixStillHasOurRotation(float* camMatrix) {
+static bool MatrixStillHasOurRotation(float* camMatrix, bool restoring = false) {
     if (!camMatrix || !s_hasRotationState) {
         return false;
     }
     if (camMatrix != s_lastModifiedMatrix) return false;
+    auto* camera = RuntimeCamera(restoring);
+    if (!camera || camera + ActiveLayout().cameraTransform != reinterpret_cast<uint8_t*>(camMatrix)) return false;
     for (int i = 0; i < 9; i++) {
         if (fabsf(camMatrix[i] - s_matrixAfterRotation[i]) > 0.0001f) {
             return false;
@@ -136,8 +138,10 @@ static bool MatrixStillHasOurRotation(float* camMatrix) {
 // Between frames the engine always refreshes the position (scene graph
 // propagation), so this only returns true for multiple CalcCullingPlanes
 // calls within the same frame.
-static bool PositionStillHasOurOffset(float* pos) {
+static bool PositionStillHasOurOffset(float* pos, bool restoring = false) {
     if (!pos || !s_hasPositionState || pos != s_lastModifiedPosition) return false;
+    auto* camera = RuntimeCamera(restoring);
+    if (!camera || camera + ActiveLayout().cameraPosition != reinterpret_cast<uint8_t*>(pos)) return false;
     for (int i = 0; i < 3; i++) {
         if (fabsf(pos[i] - s_positionAfter[i]) > 0.01f) return false;
     }
@@ -181,6 +185,7 @@ static void ApplyCameraPositionOffset(float* camPos, float posX, float posY, flo
     const Vec3 applied = g_rigLean.Applied();
     const Vec3 lean = s_leanClamp.Apply({camPos[0] - applied.x, camPos[1] - applied.y, camPos[2] - applied.z},
                                         desired, dt, collision ? &QueryLean : nullptr, nullptr);
+    if (RuntimeValidationFailed()) return;
     // The sweep hangs off the player's character controller. One frame without
     // it is reported and the lean passes through, as the core clamp does, rather
     // than switching head tracking off for the rest of the session.
@@ -245,7 +250,7 @@ void ResetLeanClamp() {
 }
 
 bool GetCameraPositionOffset(const void* camera, float offset[3]) {
-    if (!camera || reinterpret_cast<const uint8_t*>(camera) + 0x8C !=
+    if (!camera || reinterpret_cast<const uint8_t*>(camera) + ActiveLayout().cameraPosition !=
         reinterpret_cast<const uint8_t*>(s_lastModifiedPosition) ||
         !PositionStillHasOurOffset(s_lastModifiedPosition)) return false;
     for (int i = 0; i < 3; ++i) offset[i] = s_positionAfter[i] - s_positionBefore[i];
@@ -256,16 +261,16 @@ void RestoreCamera() {
     g_weaponView.valid = false;
     g_rigLean.EndFrame();
     bool restored = false;
-    if (MatrixStillHasOurRotation(s_lastModifiedMatrix)) {
+    if (MatrixStillHasOurRotation(s_lastModifiedMatrix, true)) {
         memcpy(s_lastModifiedMatrix, s_matrixBeforeRotation, sizeof(s_matrixBeforeRotation));
         restored = true;
     }
-    if (PositionStillHasOurOffset(s_lastModifiedPosition)) {
+    if (PositionStillHasOurOffset(s_lastModifiedPosition, true)) {
         memcpy(s_lastModifiedPosition, s_positionBefore, sizeof(s_positionBefore));
         restored = true;
     }
     if (restored) {
-        auto* camera = reinterpret_cast<uint8_t*>(s_lastModifiedMatrix) - 0x68;
+        auto* camera = reinterpret_cast<uint8_t*>(s_lastModifiedMatrix) - ActiveLayout().cameraTransform;
         reinterpret_cast<void (__thiscall*)(void*)>(ActiveProfile().updateCameraProjection)(camera);
     }
     s_hasRotationState = false;
@@ -276,7 +281,7 @@ void RestoreCamera() {
 static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, void* frustum, void* worldTransform) {
     (void)edx;
 
-    if (D3D9Hook::IsFatalErrorSet()) {
+    if (D3D9Hook::IsFatalErrorSet() || RuntimeValidationFailed()) {
         typedef void (__thiscall *OrigCalcCullingPlanesFn)(void* thisPtr, void* frustum, void* worldTrans);
         OrigCalcCullingPlanesFn origFunc = reinterpret_cast<OrigCalcCullingPlanesFn>(s_calcCullingTrampoline);
         origFunc(frustumPlanes, frustum, worldTransform);
@@ -294,27 +299,8 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
     bool appliedRotation = false;
     bool isMainCamera = false;
 
-    // CalcCullingPlanes is invoked multiple times per frame (main camera, shadow,
-    // reflection, refraction). The scene-graph -> camera -> world-transform walk
-    // is stable across frames and only changes on scene loads / camera-mode
-    // switches, so cache the resolved transform pointer and rebuild only when
-    // either of the two upstream pointers changes (still one deref per call).
-    static uint8_t* s_cachedSceneGraph = nullptr;
-    static uint8_t* s_cachedCamera = nullptr;
-    static void* s_cachedMainWorldTransform = nullptr;
-
-    uint8_t* sceneGraph = *reinterpret_cast<uint8_t**>(GameOffsets::SceneGraphBase());
-    if (sceneGraph) {
-        uint8_t* camera = *reinterpret_cast<uint8_t**>(sceneGraph + GameOffsets::kSceneGraphCamera);
-        if (camera) {
-            if (sceneGraph != s_cachedSceneGraph || camera != s_cachedCamera) {
-                s_cachedSceneGraph = sceneGraph;
-                s_cachedCamera = camera;
-                s_cachedMainWorldTransform = reinterpret_cast<void*>(camera + GameOffsets::kCameraWorldTransform);
-            }
-            isMainCamera = (worldTransform == s_cachedMainWorldTransform);
-        }
-    }
+    uint8_t* worldCamera = RuntimeCamera();
+    isMainCamera = worldCamera && worldTransform == worldCamera + ActiveLayout().cameraTransform;
 
     float* camMatrix = reinterpret_cast<float*>(worldTransform);
     float* f = reinterpret_cast<float*>(frustum);
@@ -353,7 +339,7 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
                 "Camera: aiming=%d head=(%.2f,%.2f,%.2f) render=(%.2f,%.2f,%.2f) zoom=%.4f rig=(%.2f,%.2f,%.2f) aim=(%.6f,%.6f)",
                 IsPlayerAiming(), headYaw, headPitch, rollDeg, yawDeg, pitchDeg, rollDeg, zoom,
                 g_rigLean.Applied().x, g_rigLean.Applied().y, g_rigLean.Applied().z,
-                *reinterpret_cast<float*>(player + 0x2C), *reinterpret_cast<float*>(player + 0x24));
+                *reinterpret_cast<float*>(player + ActiveLayout().playerRotation + 8), *reinterpret_cast<float*>(player + ActiveLayout().playerRotation));
         }
 
         __try {
@@ -374,7 +360,7 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
         if (posX != 0.0f || posY != 0.0f || posZ != 0.0f || s_hasPositionState ||
             rig.x != 0.0f || rig.y != 0.0f || rig.z != 0.0f) {
             float* camPos = reinterpret_cast<float*>(
-                static_cast<uint8_t*>(worldTransform) + GameOffsets::kWorldTransformToPosition);
+                static_cast<uint8_t*>(worldTransform) + GameOffsets::WorldTransformToPosition());
             ApplyCameraPositionOffset(camPos,
                 posX * kGameUnitsPerMeter,
                 posY * kGameUnitsPerMeter,
@@ -393,7 +379,7 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
     if (appliedRotation) {
         using cameraunlock::math::Vec3;
         const auto* position = reinterpret_cast<const float*>(
-            static_cast<const uint8_t*>(worldTransform) + GameOffsets::kWorldTransformToPosition);
+            static_cast<const uint8_t*>(worldTransform) + GameOffsets::WorldTransformToPosition());
         const float* cleanPosition = s_hasPositionState ? s_positionBefore : position;
         const Vec3 origin{cleanPosition[0], cleanPosition[1], cleanPosition[2]};
         const Vec3 forward{s_matrixBeforeRotation[0], s_matrixBeforeRotation[3], s_matrixBeforeRotation[6]};
@@ -404,6 +390,12 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
         g_bodyAimInCamera[1] = delta.x*camMatrix[1] + delta.y*camMatrix[4] + delta.z*camMatrix[7];
         g_bodyAimInCamera[2] = delta.x*camMatrix[2] + delta.y*camMatrix[5] + delta.z*camMatrix[8];
         aimTraced = hit.queried;
+    }
+    if (RuntimeValidationFailed()) {
+        RestoreCamera();
+        g_aimProjectionValid = false;
+        reinterpret_cast<void (__thiscall*)(void*, void*, void*)>(s_calcCullingTrampoline)(frustumPlanes, frustum, worldTransform);
+        return;
     }
     float origLeft = 0, origRight = 0, origTop = 0, origBottom = 0;
 
@@ -457,7 +449,7 @@ static void __fastcall HookedCalcCullingPlanes(void* frustumPlanes, void* edx, v
         f[2] = origTop;
         f[3] = origBottom;
         // World transform edits do not rebuild NiCamera's cached projection.
-        auto* camera = reinterpret_cast<uint8_t*>(camMatrix) - 0x68;
+        auto* camera = reinterpret_cast<uint8_t*>(camMatrix) - ActiveLayout().cameraTransform;
         reinterpret_cast<void (__thiscall*)(void*)>(ActiveProfile().updateCameraProjection)(camera);
 
 #if HEADTRACKING_DEBUG_LOGGING
@@ -484,18 +476,19 @@ static void* s_setCameraFov = nullptr;
 static void __fastcall HookedSetCameraFov(void* sceneGraph, void*, float fov, bool force, void* camera, bool lod) {
     using Original = void (__thiscall*)(void*, float, bool, void*, bool);
     reinterpret_cast<Original>(s_setCameraFov)(sceneGraph, fov, force, camera, lod);
+    if (RuntimeValidationFailed() || !RuntimeCamera()) return;
     auto* target = camera ? static_cast<uint8_t*>(camera) :
-        *reinterpret_cast<uint8_t**>(static_cast<uint8_t*>(sceneGraph) + 0xAC);
+        *reinterpret_cast<uint8_t**>(static_cast<uint8_t*>(sceneGraph) + ActiveLayout().sceneCamera);
     if (D3D9Hook::IsFatalErrorSet() || !s_hasRotationState || !target ||
-        target + 0x68 != reinterpret_cast<uint8_t*>(s_lastModifiedMatrix)) return;
-    const auto* frustum = reinterpret_cast<const float*>(target + 0xDC);
+        target + ActiveLayout().cameraTransform != reinterpret_cast<uint8_t*>(s_lastModifiedMatrix)) return;
+    const auto* frustum = reinterpret_cast<const float*>(target + ActiveLayout().cameraFrustum);
     // A weapon lens temporarily reuses this camera. Restore tracking only when
     // the engine returns to the lens used for the tracked world draw.
     if (std::fabs(frustum[1] - g_mainCameraTanFovX) > 0.0001f ||
         std::fabs(frustum[2] - g_mainCameraTanFovY) > 0.0001f) return;
     const bool lostTracking = !MatrixStillHasOurRotation(s_lastModifiedMatrix);
-    std::memcpy(target + 0x68, s_matrixAfterRotation, sizeof(s_matrixAfterRotation));
-    if (s_hasPositionState) std::memcpy(target + 0x8C, s_positionAfter, sizeof(s_positionAfter));
+    std::memcpy(target + ActiveLayout().cameraTransform, s_matrixAfterRotation, sizeof(s_matrixAfterRotation));
+    if (s_hasPositionState) std::memcpy(target + ActiveLayout().cameraPosition, s_positionAfter, sizeof(s_positionAfter));
     reinterpret_cast<void (__thiscall*)(void*)>(ActiveProfile().updateCameraProjection)(target);
     static ULONGLONG lastLog = 0;
     const auto now = GetTickCount64();
