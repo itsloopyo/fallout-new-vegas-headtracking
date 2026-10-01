@@ -3,11 +3,9 @@
 #
 # The mod loads as dsound.dll next to FalloutNV.exe. The game imports exactly
 # one function from dsound (ordinal 11), which the DLL forwards to the system
-# copy. Camera hooks require a supported executable profile.
+# copy. Camera hooks require validated runtime discovery.
 #
-# There is no script extender in this path. Nothing is written to
-# Data\NVSE\Plugins and nothing downloads xNVSE. No config is copied: the mod
-# creates CameraUnlock.ini at its first start, importing HeadTracking.ini where
+# The mod creates CameraUnlock.ini at its first start, importing HeadTracking.ini where
 # an older build left one.
 
 param(
@@ -51,19 +49,8 @@ foreach ($gamePath in $gamePaths) {
 
     Copy-Item -Path $dllSource -Destination $dllDest -Force
     Write-ColorOutput "  dsound.dll       (the mod)" "Gray"
-
-    # An older build of this mod deployed as an xNVSE plugin. Left in place it
-    # would load a second copy of the mod alongside the proxy whenever the user
-    # launched through nvse_loader.exe: two module instances, two singletons,
-    # and two binds on UDP 4242.
-    $legacyPlugin = Join-Path $gamePath "Data\NVSE\Plugins\HeadTracking.dll"
-    if (Test-Path $legacyPlugin) {
-        Remove-Item $legacyPlugin -Force
-        Write-ColorOutput "  removed the old NVSE plugin copy (superseded by the proxy)" "Yellow"
-    }
 }
 
 Write-ColorOutput ""
 Write-ColorOutput "Deployment successful ($($gamePaths.Count) install(s))." "Green"
 Write-ColorOutput "Launch the game normally - Steam, the Xbox app, or the exe." "Yellow"
-Write-ColorOutput "nvse_loader.exe is no longer used by this mod." "Gray"

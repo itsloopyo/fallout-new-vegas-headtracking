@@ -19,7 +19,7 @@ An unofficial head tracking mod for Fallout: New Vegas that moves the view with 
 The mod validates the required game structures at startup, including on builds
 with an unlisted fingerprint. If validation fails, head tracking stays inactive
 and the log records the reason.
-This mod loads through `dsound.dll` and does not require xNVSE.
+This mod loads through `dsound.dll`.
 
 ## Installation
 
@@ -48,15 +48,7 @@ To place the files yourself instead:
 
 1. Copy `plugins/dsound.dll` next to `FalloutNV.exe`. Keep a backup if another
    mod already owns that filename.
-2. For an upgrade from the NVSE version, copy your old
-   `Data/NVSE/Plugins/HeadTracking.ini` to the game root before you first start
-   this version, so it imports your settings, then remove the old
-   `Data/NVSE/Plugins/HeadTracking.dll`.
-3. Configure your tracker for UDP port `4242` and launch the game normally.
-
-The launcher package also updates the legacy NVSE DLL path with a compatibility
-copy. That copy stays dormant when the root proxy is loaded, preventing two
-versions from changing the camera at once.
+2. Configure your tracker for UDP port `4242` and launch the game normally.
 
 A manager that deploys only into `Data` cannot install this proxy: `dsound.dll`
 must be beside the executable. This release has no Data-only Nexus archive.
@@ -337,9 +329,7 @@ Use Lopari to update or remove its installed package. For a manual install, run
 mod's `dsound.dll`, restores any DLL it backed up, and removes the logs. It
 leaves `CameraUnlock.ini`, an earlier version's `HeadTracking.ini` and
 `Defaults.ini` in place, so your settings are still there if you install again.
-If you placed the files by hand, remove them the same way, and
-remove the compatibility `Data/NVSE/Plugins/HeadTracking.dll` too if present.
-Other mods may still need xNVSE.
+If you placed the files by hand, remove them the same way.
 
 ## Building from source
 
@@ -373,7 +363,7 @@ Third-party notices ship in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 - [Obsidian Entertainment](https://www.obsidian.net/) - Fallout: New Vegas
 - [Bethesda Softworks](https://bethesda.net/) - publisher
-- [xNVSE Team](https://github.com/xNVSE/NVSE) - plugin ABI and engine layout references
+- [xNVSE Team](https://github.com/xNVSE/NVSE) - engine layout references
 - [OpenTrack](https://github.com/opentrack/opentrack) - head tracking software
 - [cameraunlock-core](https://github.com/itsloopyo/cameraunlock-core) - shared head tracking library
 

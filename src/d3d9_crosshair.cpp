@@ -6,7 +6,7 @@
 #include "debug_log.h"
 #include "build_profile.h"
 #include "runtime_discovery.h"
-#include "nvse_abi/GameAPI.h"
+#include "game_api.h"
 #include <cameraunlock/logging/file_log.h>
 
 #include <cstring>

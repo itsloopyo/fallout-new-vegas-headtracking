@@ -20,10 +20,6 @@
 #include <cameraunlock/processing/position_interpolator.h>
 #include <cameraunlock/math/vec3.h>
 
-// Forward declarations
-struct NVSEInterface;
-struct NVSEMessagingInterface;
-
 namespace HeadTracking {
 
 // Forward declarations for plugin components
@@ -37,9 +33,6 @@ class HeadTrackingPlugin {
 public:
     static HeadTrackingPlugin& Instance();
 
-    bool Initialize(const NVSEInterface* nvse);
-
-    // Loader-independent initialization, used by the proxy deployment.
     bool Initialize();
     void Update();
     void OnGameLoaded();
@@ -133,10 +126,6 @@ private:
 
 // Global module handle (set in DllMain)
 extern HMODULE g_hModule;
-
-// Console print function pointer - always nullptr since NVSE doesn't expose this
-// All if(g_ConsolePrint) checks will fail, effectively disabling console output
-inline void (*g_ConsolePrint)(const char* fmt, ...) = nullptr;
 
 // The folder of this DLL, which holds CameraUnlock.ini and the legacy
 // HeadTracking.ini.

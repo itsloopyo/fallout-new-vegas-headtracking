@@ -1,7 +1,6 @@
 #include <Windows.h>
 
 #include "plugin.h"
-#include "nvse_abi/PluginAPI.h"
 #include "version.h"
 #include "udp_receiver.h"
 #include "camera_controller.h"
@@ -67,28 +66,6 @@ HeadTrackingPlugin::HeadTrackingPlugin()
 
 HeadTrackingPlugin::~HeadTrackingPlugin() = default;
 
-bool HeadTrackingPlugin::Initialize(const NVSEInterface* nvse) {
-    if (m_initialized) {
-        return true;
-    }
-
-    if (!nvse) {
-        return false;
-    }
-
-    // Confirm the messaging interface exists before we go further - game
-    // lifecycle events (load/exit/main loop) are delivered through it, so
-    // there is no point initializing without it.
-    if (!nvse->QueryInterface(kInterface_Messaging)) {
-        culog::Line("ERROR: NVSE has no messaging interface - head tracking is inactive");
-        return false;
-    }
-
-    return Initialize();
-}
-
-// The loader-independent half. The proxy deployment has no script extender to
-// interrogate, so it enters here directly.
 bool HeadTrackingPlugin::Initialize() {
     if (m_initialized) {
         return true;

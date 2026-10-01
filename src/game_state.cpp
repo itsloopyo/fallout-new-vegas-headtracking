@@ -3,7 +3,7 @@
 #include "game_state.h"
 #include "plugin.h"
 
-#include "nvse_abi/GameAPI.h"
+#include "game_api.h"
 
 namespace HeadTracking {
 
@@ -30,10 +30,6 @@ void GameState::Initialize() {
     m_currentState = GameStateFlags::None;
     m_previousState = GameStateFlags::None;
     m_initialized = true;
-
-    if (g_ConsolePrint) {
-        g_ConsolePrint("HeadTracking: Game state detector initialized");
-    }
 }
 
 void GameState::CacheSingletons() {

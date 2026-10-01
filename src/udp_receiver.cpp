@@ -1,5 +1,4 @@
 #include "udp_receiver.h"
-#include "plugin.h"
 #include "debug_log.h"
 
 #include <cameraunlock/logging/file_log.h>
@@ -24,14 +23,10 @@ bool UdpReceiver::Initialize(uint16_t port) {
     // Surface the core's bind-failure / retry / recovery messages through the
     // plugin's log sinks. This callback also fires from the core's background
     // retry thread, so every sink must be safe off the game thread:
-    // g_ConsolePrint is null in shipping builds, the debug log compiles out,
-    // and the shared file log is mutex-serialized. Every message the core
+    // the shared file log is mutex-serialized. Every message the core
     // emits is one-shot latched (first packet and its sender, bind retries,
     // parse failures), so this cannot grow without bound.
     m_core.SetLog([](const std::string& msg) {
-        if (g_ConsolePrint) {
-            g_ConsolePrint("HeadTracking: %s", msg.c_str());
-        }
         HT_LOG_UDP("%s", msg.c_str());
         cameraunlock::logging::Line("UDP: %s", msg.c_str());
     });
@@ -39,13 +34,6 @@ bool UdpReceiver::Initialize(uint16_t port) {
     bool bound = m_core.Start(port);
     m_started = true;
 
-    if (g_ConsolePrint) {
-        if (bound) {
-            g_ConsolePrint("HeadTracking: UDP receiver listening on port %d", m_port);
-        } else {
-            g_ConsolePrint("HeadTracking: UDP port %d in use - retrying in background", m_port);
-        }
-    }
     if (bound) {
         cameraunlock::logging::Line("UDP receiver bound to port %d", m_port);
     } else {

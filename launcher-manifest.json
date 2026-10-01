@@ -16,10 +16,6 @@
       "source": "plugins/dsound.dll",
       "target": "dsound.dll",
       "backup": true
-    },
-    {
-      "source": "plugins/dsound.dll",
-      "target": "Data/NVSE/Plugins/HeadTracking.dll"
     }
   ],
   "runtime_requirements": [],

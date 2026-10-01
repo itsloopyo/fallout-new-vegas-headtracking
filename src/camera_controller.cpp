@@ -9,7 +9,7 @@
 #include <cameraunlock/math/angle_utils.h>
 #include <cameraunlock/math/smoothing_utils.h>
 
-#include "nvse_abi/GameAPI.h"
+#include "game_api.h"
 
 #include <algorithm>
 #include <cmath>
@@ -50,10 +50,6 @@ void CameraController::Initialize() {
     m_hasTrackingData = false;
 
     m_initialized = true;
-
-    if (g_ConsolePrint) {
-        g_ConsolePrint("HeadTracking: Camera controller initialized");
-    }
 }
 
 void CameraController::Update(const TrackingData& data, float deltaTime) {
@@ -137,9 +133,6 @@ void CameraController::SetEnabled(bool enabled) {
         m_smoothedRoll = 0.0;
     }
 
-    if (g_ConsolePrint) {
-        g_ConsolePrint("HeadTracking: %s", enabled ? "Enabled" : "Disabled");
-    }
 }
 
 void CameraController::SetLocalSmoothing(double smoothing) {

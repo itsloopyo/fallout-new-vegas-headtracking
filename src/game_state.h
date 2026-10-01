@@ -4,7 +4,7 @@
 
 #include <cstdint>
 
-// Forward declarations (global namespace - defined in nvse_abi/GameAPI.h)
+// Forward declarations (global namespace - defined in game_api.h)
 class InterfaceManager;
 class PlayerCharacter;
 

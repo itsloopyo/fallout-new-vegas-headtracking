@@ -73,25 +73,6 @@ redistributed.
 
 ---
 
-## xNVSE (New Vegas Script Extender)
-
-The root proxy does not require xNVSE. The DLL also accepts the NVSE plugin
-ABI for existing Steam installations. No xNVSE binary is bundled or downloaded
-by the release package.
-
-- Upstream: https://github.com/xNVSE/NVSE
-
-**On `src/nvse_abi/`.** Those two headers are written by this project. They
-declare only what a plugin must state to be callable across the binary
-boundary: struct field order, enumerator values, and function-pointer
-signatures. Those are constraints the ABI imposes on anyone who wants to
-interoperate with it, not expression borrowed from the xNVSE authors, and they
-contain no upstream implementation code. They are not a vendored copy of the
-xNVSE SDK, and the directory is deliberately named so as not to suggest
-otherwise.
-
----
-
 ## Fallout: New Vegas
 
 Fallout: New Vegas and all related names, logos, characters, and marks are
@@ -107,6 +88,7 @@ JohnnyGuitar NVSE public structure declarations are references for engine
 field layouts, first-person camera ownership and collision-query ABI declarations. This project's
 boundary code records those layouts without copying upstream implementations.
 
+- xNVSE: https://github.com/xNVSE/NVSE
 - JIP LN NVSE: https://github.com/jazzisparis/JIP-LN-NVSE
 - JohnnyGuitar NVSE: https://github.com/carxt/JohnnyGuitarNVSE
 

@@ -9,10 +9,6 @@ namespace Proxy {
 // under the proxy's filename.
 void OnProcessAttach(HMODULE self);
 
-// Whether this DLL was loaded as the proxy (dsound.dll next to the exe) rather
-// than as the script-extender plugin. One binary serves both deployments.
-bool LoadedAsProxy(HMODULE self);
-
 // True once the proxy has identified the build, initialised the plugin and
 // handed per-frame work to the render hook. False in the launcher process, on
 // an unrecognised build, and during startup.

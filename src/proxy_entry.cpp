@@ -187,10 +187,7 @@ DirectSoundCreate8(const GUID* device, void** ds8, void* outer) {
 namespace HeadTracking {
 namespace Proxy {
 
-// One binary serves both deployments, so it decides which entry point it is by
-// the name it was loaded under: dsound.dll next to the exe is the proxy,
-// anything else is the script-extender plugin and this does nothing.
-bool LoadedAsProxy(HMODULE self) {
+static bool LoadedAsProxy(HMODULE self) {
     wchar_t path[MAX_PATH] = {0};
     if (GetModuleFileNameW(self, path, MAX_PATH) == 0) {
         return false;

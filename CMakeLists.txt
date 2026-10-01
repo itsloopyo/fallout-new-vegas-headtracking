@@ -130,6 +130,7 @@ set(HEADERS
     src/legacy_config/legacy_config.h
     src/tracking_data.h
     src/game_offsets.h
+    src/game_api.h
     src/udp_receiver.h
     src/camera_controller.h
     src/game_state.h
@@ -143,18 +144,10 @@ set(HEADERS
     src/window_centering.h
 )
 
-# Our own declarations of the script-extender plugin ABI and the game's
-# runtime layout. Interoperability declarations, not a vendored SDK - see
-# THIRD-PARTY-NOTICES.md.
-set(NVSE_ABI_HEADERS
-    src/nvse_abi/PluginAPI.h
-    src/nvse_abi/GameAPI.h
-)
-
 # Create DLL
 # The .def is what puts DirectSoundCreate8 on ordinal 11, which is the ordinal
 # the game imports. A name-only export would not satisfy the import.
-add_library(HeadTracking SHARED ${SOURCES} ${HEADERS} ${NVSE_ABI_HEADERS} src/dsound.def)
+add_library(HeadTracking SHARED ${SOURCES} ${HEADERS} src/dsound.def)
 
 # Link CameraUnlock library, Winsock and D3D9
 target_link_libraries(HeadTracking
@@ -194,7 +187,6 @@ set_target_properties(HeadTracking PROPERTIES
 # Generate Visual Studio filters matching directory structure
 source_group("Source Files" FILES ${SOURCES})
 source_group("Header Files" FILES ${HEADERS})
-source_group("NVSE ABI" FILES ${NVSE_ABI_HEADERS})
 
 # Print configuration summary
 message(STATUS "")
