@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.0] - 2026-10-01
+
+### Added
+
+- discover validated New Vegas runtime bindings
+
+### Fixed
+
+- clear rejected build profile selections
+
 ## [0.4.0] - 2026-09-30
 
 ### Changed
